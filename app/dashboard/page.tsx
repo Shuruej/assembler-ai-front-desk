@@ -29,6 +29,7 @@ type Lead = {
   preferred_datetime: string | null;
   status: string | null;
   notes: string | null;
+  confirmation_status: string | null;
 };
 
 async function fetchJson<T>(url: string): Promise<T> {
@@ -389,7 +390,8 @@ export default function DashboardPage() {
                             <th className="py-2 pr-4 font-semibold">Request</th>
                             <th className="py-2 pr-4 font-semibold">Preferred time</th>
                             <th className="py-2 pr-4 font-semibold">Status</th>
-                            <th className="py-2 font-semibold">Notes</th>
+                            <th className="py-2 pr-4 font-semibold">Notes</th>
+                            <th className="py-2 font-semibold">Action</th>
                           </tr>
                         </thead>
                         <tbody className="divide-y divide-zinc-100">
@@ -412,6 +414,16 @@ export default function DashboardPage() {
                               </td>
                               <td className="py-3 text-zinc-700">
                                 {displayValue(lead.notes)}
+                              </td>
+                              <td className="py-3">
+                                {lead.confirmation_status === "pending" ? (
+                                  <Link
+                                    className="inline-flex rounded-md border border-zinc-300 bg-white px-3 py-1.5 text-xs font-medium text-zinc-700 hover:bg-zinc-100"
+                                    href={`/confirm/${lead.id}`}
+                                  >
+                                    Confirm
+                                  </Link>
+                                ) : null}
                               </td>
                             </tr>
                           ))}
