@@ -8,6 +8,7 @@ type Agent = {
   business_name: string | null;
   industry: string | null;
   name: string | null;
+  assemblyai_agent_id: string | null;
   created_at: string | null;
 };
 
@@ -73,6 +74,10 @@ function formatDuration(seconds: number | null): string {
 
 function displayValue(value: string | null): string {
   return value && value.trim().length > 0 ? value : "Not recorded";
+}
+
+function getDemoHref(assemblyAIAgentId: string): string {
+  return `/demo?agent_id=${encodeURIComponent(assemblyAIAgentId)}`;
 }
 
 export default function DashboardPage() {
@@ -221,26 +226,38 @@ export default function DashboardPage() {
                   const isSelected = agent.id === selectedAgentId;
 
                   return (
-                    <button
-                      className={`rounded-md border px-3 py-3 text-left ${
+                    <div
+                      className={`flex items-start gap-3 rounded-md border p-3 ${
                         isSelected
                           ? "border-zinc-950 bg-zinc-100"
                           : "border-zinc-200 bg-white hover:bg-zinc-50"
                       }`}
                       key={agent.id}
-                      onClick={() => setSelectedAgentId(agent.id)}
-                      type="button"
                     >
-                      <div className="text-sm font-semibold">
-                        {displayValue(agent.business_name)}
-                      </div>
-                      <div className="mt-1 text-xs text-zinc-500">
-                        {displayValue(agent.industry)}
-                      </div>
-                      <div className="mt-1 text-sm text-zinc-700">
-                        {displayValue(agent.name)}
-                      </div>
-                    </button>
+                      <button
+                        className="min-w-0 flex-1 text-left"
+                        onClick={() => setSelectedAgentId(agent.id)}
+                        type="button"
+                      >
+                        <div className="text-sm font-semibold">
+                          {displayValue(agent.business_name)}
+                        </div>
+                        <div className="mt-1 text-xs text-zinc-500">
+                          {displayValue(agent.industry)}
+                        </div>
+                        <div className="mt-1 text-sm text-zinc-700">
+                          {displayValue(agent.name)}
+                        </div>
+                      </button>
+                      {agent.assemblyai_agent_id ? (
+                        <Link
+                          className="shrink-0 rounded-md border border-zinc-300 bg-white px-2 py-1 text-xs font-medium text-zinc-700 hover:bg-zinc-100"
+                          href={getDemoHref(agent.assemblyai_agent_id)}
+                        >
+                          Test
+                        </Link>
+                      ) : null}
+                    </div>
                   );
                 })
               )}
@@ -258,14 +275,24 @@ export default function DashboardPage() {
             ) : (
               <>
                 <section className="rounded-lg border border-zinc-200 bg-white p-4">
-                  <div>
-                    <h2 className="text-xl font-semibold">
-                      {displayValue(selectedAgent.business_name)}
-                    </h2>
-                    <p className="mt-1 text-sm text-zinc-500">
-                      {displayValue(selectedAgent.name)} -{" "}
-                      {displayValue(selectedAgent.industry)}
-                    </p>
+                  <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+                    <div>
+                      <h2 className="text-xl font-semibold">
+                        {displayValue(selectedAgent.business_name)}
+                      </h2>
+                      <p className="mt-1 text-sm text-zinc-500">
+                        {displayValue(selectedAgent.name)} -{" "}
+                        {displayValue(selectedAgent.industry)}
+                      </p>
+                    </div>
+                    {selectedAgent.assemblyai_agent_id ? (
+                      <Link
+                        className="inline-flex w-fit rounded-md bg-zinc-950 px-4 py-2 text-sm font-medium text-white"
+                        href={getDemoHref(selectedAgent.assemblyai_agent_id)}
+                      >
+                        Test this agent
+                      </Link>
+                    ) : null}
                   </div>
                 </section>
 
