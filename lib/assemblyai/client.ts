@@ -68,6 +68,45 @@ export async function createAssemblyAIAgent({
       ].join(" "),
       greeting: `Thanks for calling ${businessName}. How can I help you today?`,
       voice: { voice_id: "alba" },
+      tools: [
+        {
+          type: "function",
+          name: "capture_lead",
+          description:
+            "Capture a generic booking request, inquiry, or follow-up lead once you have gathered enough caller information to log it. Use this for any industry when the caller expresses clear interest, asks for a booking, requests a service, or wants follow-up.",
+          parameters: {
+            type: "object",
+            properties: {
+              customer_name: {
+                type: "string",
+                description: "The caller's name.",
+              },
+              phone_number: {
+                type: "string",
+                description:
+                  "The caller's phone number, preferably including country code if available.",
+              },
+              requested_service: {
+                type: "string",
+                description:
+                  "The service, product, booking, or inquiry the caller is interested in.",
+              },
+              preferred_datetime: {
+                type: "string",
+                description:
+                  "The caller's preferred date and time in ISO 8601 format if possible.",
+                format: "date-time",
+              },
+              notes: {
+                type: "string",
+                description:
+                  "Any useful context, constraints, or follow-up notes from the conversation.",
+              },
+            },
+            required: ["customer_name", "phone_number"],
+          },
+        },
+      ],
     }),
   });
 

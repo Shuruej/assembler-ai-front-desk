@@ -15,6 +15,11 @@ type VoiceTokenResponse = {
   error?: string;
 };
 
+type CallStartResponse = {
+  id?: string;
+  error?: string;
+};
+
 type VoiceAgentMessage = {
   type: string;
   session_id?: string;
@@ -25,40 +30,37 @@ type VoiceAgentMessage = {
   delta?: string;
   status?: string;
   message?: string;
+  call_id?: string;
+  name?: string;
+  arguments?: Record<string, unknown>;
 };
 
 function arrayBufferToBase64(buffer: ArrayBuffer): string {
   const bytes = new Uint8Array(buffer);
   let binary = "";
-
   for (let i = 0; i < bytes.length; i += 1) {
     binary += String.fromCharCode(bytes[i]);
   }
-
   return btoa(binary);
 }
 
 function base64ToPcm16(base64: string): Int16Array {
   const binary = atob(base64);
   const pcm16 = new Int16Array(binary.length / 2);
-
   for (let i = 0; i < pcm16.length; i += 1) {
     const low = binary.charCodeAt(i * 2);
     const high = binary.charCodeAt(i * 2 + 1);
     const sample = low | (high << 8);
     pcm16[i] = sample >= 0x8000 ? sample - 0x10000 : sample;
   }
-
   return pcm16;
 }
 
 function pcm16ToFloat32(pcm16: Int16Array): Float32Array {
   const float32 = new Float32Array(pcm16.length);
-
   for (let i = 0; i < pcm16.length; i += 1) {
     float32[i] = pcm16[i] / 32768;
   }
-
   return float32;
 }
 
@@ -67,6 +69,7 @@ export default function DemoPage() {
   const [status, setStatus] = useState("Idle");
   const [isCalling, setIsCalling] = useState(false);
   const [transcript, setTranscript] = useState<TranscriptEntry[]>([]);
+
   const wsRef = useRef<WebSocket | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
   const audioContextRef = useRef<AudioContext | null>(null);
@@ -76,18 +79,26 @@ export default function DemoPage() {
   const playbackTimeRef = useRef(0);
   const readyRef = useRef(false);
 
+  const dbCallIdRef = useRef<string | null>(null);
+  const transcriptTextRef = useRef<string>("");
+  const pendingToolResultsRef = useRef<{ call_id: string; result: string }[]>([]);
+  const hasEndedRef = useRef(false);
+
   function addTranscript(entry: TranscriptEntry) {
     setTranscript((current) => [...current, entry]);
+  }
+
+  function appendTranscriptText(role: string, text: string) {
+    if (!text) return;
+    transcriptTextRef.current += `${role}: ${text}\n`;
   }
 
   function upsertTranscript(entry: TranscriptEntry) {
     setTranscript((current) => {
       const index = current.findIndex((item) => item.id === entry.id);
-
       if (index === -1) {
         return [...current, entry];
       }
-
       return current.map((item, itemIndex) =>
         itemIndex === index ? { ...item, ...entry } : item,
       );
@@ -96,10 +107,7 @@ export default function DemoPage() {
 
   function playAudioChunk(base64Audio: string) {
     const audioContext = audioContextRef.current;
-
-    if (!audioContext) {
-      return;
-    }
+    if (!audioContext) return;
 
     const pcm16 = base64ToPcm16(base64Audio);
     const float32 = pcm16ToFloat32(pcm16);
@@ -114,6 +122,29 @@ export default function DemoPage() {
     playbackTimeRef.current = Math.max(playbackTimeRef.current, now);
     source.start(playbackTimeRef.current);
     playbackTimeRef.current += buffer.duration;
+  }
+
+  async function endCallOnServer() {
+    if (hasEndedRef.current) return;
+    hasEndedRef.current = true;
+
+    const dbCallId = dbCallIdRef.current;
+    if (!dbCallId) return;
+
+    try {
+      await fetch("/api/calls/end", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          call_id: dbCallId,
+          transcript: transcriptTextRef.current.trim(),
+        }),
+      });
+    } catch {
+      // Best-effort — don't block cleanup on this.
+    } finally {
+      dbCallIdRef.current = null;
+    }
   }
 
   function cleanup() {
@@ -131,13 +162,82 @@ export default function DemoPage() {
     sourceRef.current = null;
     silenceRef.current = null;
     playbackTimeRef.current = 0;
+    pendingToolResultsRef.current = [];
     setIsCalling(false);
     setStatus("Idle");
   }
 
+  async function handleToolCall(message: VoiceAgentMessage) {
+    if (message.name !== "capture_lead") return;
+
+    const args = (message.arguments ?? {}) as Record<string, unknown>;
+    const dbCallId = dbCallIdRef.current;
+
+    let resultPayload: Record<string, unknown>;
+
+    if (!dbCallId) {
+      resultPayload = { success: false, error: "No active call on record." };
+    } else {
+      try {
+        const response = await fetch("/api/leads", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            call_id: dbCallId,
+            customer_name: args.customer_name,
+            phone_number: args.phone_number,
+            requested_service: args.requested_service,
+            preferred_datetime: args.preferred_datetime,
+            notes: args.notes,
+          }),
+        });
+        const data = await response.json();
+
+        if (!response.ok) {
+          resultPayload = { success: false, error: data.error ?? "Failed to save lead." };
+        } else {
+          resultPayload = { success: true, lead_id: data.id };
+          addTranscript({
+            id: `system-lead-${Date.now()}`,
+            role: "system",
+            text: "Lead captured and saved.",
+          });
+        }
+      } catch (err) {
+        resultPayload = {
+          success: false,
+          error: err instanceof Error ? err.message : "Failed to save lead.",
+        };
+      }
+    }
+
+    if (message.call_id) {
+      pendingToolResultsRef.current.push({
+        call_id: message.call_id,
+        result: JSON.stringify(resultPayload),
+      });
+    }
+  }
+
+  function flushPendingToolResults() {
+    const ws = wsRef.current;
+    if (!ws || ws.readyState !== WebSocket.OPEN) return;
+
+    while (pendingToolResultsRef.current.length > 0) {
+      const pending = pendingToolResultsRef.current.shift();
+      if (!pending) continue;
+      ws.send(
+        JSON.stringify({
+          type: "tool.result",
+          call_id: pending.call_id,
+          result: pending.result,
+        }),
+      );
+    }
+  }
+
   async function startCall() {
     const trimmedAgentId = agentId.trim();
-
     if (!trimmedAgentId) {
       setStatus("Enter an AssemblyAI agent ID first.");
       return;
@@ -145,6 +245,8 @@ export default function DemoPage() {
 
     setStatus("Requesting voice token...");
     setTranscript([]);
+    transcriptTextRef.current = "";
+    hasEndedRef.current = false;
 
     try {
       const tokenResponse = await fetch(
@@ -155,6 +257,21 @@ export default function DemoPage() {
       if (!tokenResponse.ok || !tokenData.token) {
         throw new Error(tokenData.error ?? "Failed to mint voice token.");
       }
+
+      setStatus("Starting call record...");
+
+      const callStartResponse = await fetch("/api/calls/start", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ assemblyai_agent_id: trimmedAgentId }),
+      });
+      const callStartData = (await callStartResponse.json()) as CallStartResponse;
+
+      if (!callStartResponse.ok || !callStartData.id) {
+        throw new Error(callStartData.error ?? "Failed to start call record.");
+      }
+
+      dbCallIdRef.current = callStartData.id;
 
       setStatus("Requesting microphone...");
 
@@ -170,19 +287,15 @@ export default function DemoPage() {
         },
       });
       const source = audioContext.createMediaStreamSource(stream);
-      const worklet = new AudioWorkletNode(
-        audioContext,
-        "assemblyai-pcm-processor",
-        {
-          processorOptions: {
-            inputSampleRate: audioContext.sampleRate,
-            targetSampleRate: 24000,
-          },
+      const worklet = new AudioWorkletNode(audioContext, "assemblyai-pcm-processor", {
+        processorOptions: {
+          inputSampleRate: audioContext.sampleRate,
+          targetSampleRate: 24000,
         },
-      );
+      });
       const silence = audioContext.createGain();
-
       silence.gain.value = 0;
+
       const wsUrl = new URL("wss://agents.assemblyai.com/v1/ws");
       wsUrl.searchParams.set("token", tokenData.token);
       const ws = new WebSocket(wsUrl);
@@ -246,23 +359,14 @@ export default function DemoPage() {
             text: message.text ?? "",
             partial: false,
           });
+          appendTranscriptText("user", message.text ?? "");
         } else if (message.type === "transcript.agent.delta") {
           const id = message.item_id ?? message.reply_id ?? "agent-partial";
           setTranscript((current) => {
             const index = current.findIndex((item) => item.id === id);
-
             if (index === -1) {
-              return [
-                ...current,
-                {
-                  id,
-                  role: "agent",
-                  text: message.delta ?? "",
-                  partial: true,
-                },
-              ];
+              return [...current, { id, role: "agent", text: message.delta ?? "", partial: true }];
             }
-
             return current.map((item, itemIndex) =>
               itemIndex === index
                 ? {
@@ -280,18 +384,21 @@ export default function DemoPage() {
             text: message.text ?? "",
             partial: false,
           });
-        } else if (
-          message.type === "reply.done" &&
-          message.status === "interrupted"
-        ) {
-          playbackTimeRef.current = audioContext.currentTime;
+          appendTranscriptText("agent", message.text ?? "");
+        } else if (message.type === "tool.call") {
+          void handleToolCall(message);
+        } else if (message.type === "reply.done") {
+          if (message.status === "interrupted") {
+            playbackTimeRef.current = audioContext.currentTime;
+          }
+          flushPendingToolResults();
         } else if (message.type === "session.ended") {
           addTranscript({
             id: `system-${Date.now()}`,
             role: "system",
             text: "Session ended.",
           });
-          cleanup();
+          void endCallOnServer().finally(cleanup);
         } else if (message.type === "session.error" || message.type === "error") {
           setStatus(message.message ?? "AssemblyAI session error.");
           addTranscript({
@@ -303,13 +410,14 @@ export default function DemoPage() {
       });
 
       ws.addEventListener("close", () => {
-        cleanup();
+        void endCallOnServer().finally(cleanup);
       });
 
       ws.addEventListener("error", () => {
         setStatus("WebSocket error.");
       });
     } catch (error) {
+      await endCallOnServer();
       cleanup();
       setStatus(error instanceof Error ? error.message : "Failed to start call.");
     }
@@ -317,13 +425,12 @@ export default function DemoPage() {
 
   function stopCall() {
     const ws = wsRef.current;
-
     setStatus("Ending call...");
 
     if (ws?.readyState === WebSocket.OPEN) {
       ws.send(JSON.stringify({ type: "session.end" }));
     } else {
-      cleanup();
+      void endCallOnServer().finally(cleanup);
     }
   }
 
@@ -348,8 +455,8 @@ export default function DemoPage() {
         <div>
           <h1 className="text-3xl font-semibold">AI Front Desk Voice Demo</h1>
           <p className="mt-2 text-sm text-zinc-600">
-            Paste an AssemblyAI agent ID, start a browser call, and speak through
-            your microphone.
+            Paste an AssemblyAI agent ID, start a browser call, and speak through your
+            microphone. Leads captured during the call are saved automatically.
           </p>
         </div>
 
