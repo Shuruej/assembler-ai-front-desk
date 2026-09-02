@@ -1,6 +1,8 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import Link from "next/link";
+import { useSearchParams } from "next/navigation";
+import { Suspense, useEffect, useRef, useState } from "react";
 
 type TranscriptEntry = {
   id: string;
@@ -64,8 +66,11 @@ function pcm16ToFloat32(pcm16: Int16Array): Float32Array {
   return float32;
 }
 
-export default function DemoPage() {
-  const [agentId, setAgentId] = useState("");
+function DemoPageContent() {
+  const searchParams = useSearchParams();
+  const queryAgentId = searchParams.get("agent_id")?.trim() ?? "";
+  const hasQueryAgentId = queryAgentId.length > 0;
+  const [agentId, setAgentId] = useState(queryAgentId);
   const [status, setStatus] = useState("Idle");
   const [isCalling, setIsCalling] = useState(false);
   const [transcript, setTranscript] = useState<TranscriptEntry[]>([]);
@@ -83,6 +88,12 @@ export default function DemoPage() {
   const transcriptTextRef = useRef<string>("");
   const pendingToolResultsRef = useRef<{ call_id: string; result: string }[]>([]);
   const hasEndedRef = useRef(false);
+
+  useEffect(() => {
+    if (hasQueryAgentId) {
+      setAgentId(queryAgentId);
+    }
+  }, [hasQueryAgentId, queryAgentId]);
 
   function addTranscript(entry: TranscriptEntry) {
     setTranscript((current) => [...current, entry]);
@@ -471,7 +482,16 @@ export default function DemoPage() {
             value={agentId}
             onChange={(event) => setAgentId(event.target.value)}
             disabled={isCalling}
+            readOnly={hasQueryAgentId}
           />
+          {hasQueryAgentId ? (
+            <p className="text-sm text-zinc-600">
+              Not this agent?{" "}
+              <Link className="font-medium text-zinc-950 underline" href="/">
+                Go to the homepage to create or select another.
+              </Link>
+            </p>
+          ) : null}
           <div className="flex gap-3">
             <button
               className="rounded-md bg-zinc-950 px-4 py-2 text-sm font-medium text-white disabled:cursor-not-allowed disabled:bg-zinc-400"
@@ -515,5 +535,13 @@ export default function DemoPage() {
         </section>
       </div>
     </main>
+  );
+}
+
+export default function DemoPage() {
+  return (
+    <Suspense fallback={null}>
+      <DemoPageContent />
+    </Suspense>
   );
 }

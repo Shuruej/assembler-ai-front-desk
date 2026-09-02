@@ -229,7 +229,7 @@ export default function Home() {
             <div className="mt-5 flex flex-col gap-3 sm:flex-row">
               <Link
                 className="inline-flex w-fit rounded-md bg-zinc-950 px-4 py-2 text-sm font-medium text-white"
-                href="/demo"
+                href={`/demo?agent_id=${encodeURIComponent(createdAgent.assemblyai_agent_id ?? "")}`}
               >
                 Start test call
               </Link>
