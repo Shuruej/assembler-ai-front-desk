@@ -89,6 +89,7 @@ export default function DashboardPage() {
   const [expandedCallIds, setExpandedCallIds] = useState<Set<string>>(
     () => new Set(),
   );
+  const [detailsRefreshKey, setDetailsRefreshKey] = useState(0);
   const [isLoadingAgents, setIsLoadingAgents] = useState(true);
   const [isLoadingDetails, setIsLoadingDetails] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -171,7 +172,35 @@ export default function DashboardPage() {
     return () => {
       ignore = true;
     };
+  }, [selectedAgentId, detailsRefreshKey]);
+
+  useEffect(() => {
+    if (!selectedAgentId) return;
+
+    function refreshAgentDetails() {
+      setDetailsRefreshKey((current) => current + 1);
+    }
+
+    function refreshWhenVisible() {
+      if (document.visibilityState === "visible") {
+        refreshAgentDetails();
+      }
+    }
+
+    window.addEventListener("focus", refreshAgentDetails);
+    document.addEventListener("visibilitychange", refreshWhenVisible);
+
+    return () => {
+      window.removeEventListener("focus", refreshAgentDetails);
+      document.removeEventListener("visibilitychange", refreshWhenVisible);
+    };
   }, [selectedAgentId]);
+
+  function refreshSelectedAgentDetails() {
+    if (!selectedAgentId) return;
+
+    setDetailsRefreshKey((current) => current + 1);
+  }
 
   function toggleTranscript(callId: string) {
     setExpandedCallIds((current) => {
@@ -302,9 +331,19 @@ export default function DashboardPage() {
                     <h2 className="text-sm font-semibold uppercase tracking-wide text-zinc-500">
                       Calls
                     </h2>
-                    {isLoadingDetails ? (
-                      <span className="text-sm text-zinc-500">Loading...</span>
-                    ) : null}
+                    <div className="flex items-center gap-3">
+                      {isLoadingDetails ? (
+                        <span className="text-sm text-zinc-500">Loading...</span>
+                      ) : null}
+                      <button
+                        className="rounded-md border border-zinc-300 bg-white px-3 py-1.5 text-xs font-medium text-zinc-700 hover:bg-zinc-100 disabled:cursor-not-allowed disabled:text-zinc-400"
+                        disabled={isLoadingDetails}
+                        onClick={refreshSelectedAgentDetails}
+                        type="button"
+                      >
+                        Refresh
+                      </button>
+                    </div>
                   </div>
 
                   <div className="mt-4 overflow-x-auto">
@@ -371,9 +410,19 @@ export default function DashboardPage() {
                     <h2 className="text-sm font-semibold uppercase tracking-wide text-zinc-500">
                       Leads
                     </h2>
-                    {isLoadingDetails ? (
-                      <span className="text-sm text-zinc-500">Loading...</span>
-                    ) : null}
+                    <div className="flex items-center gap-3">
+                      {isLoadingDetails ? (
+                        <span className="text-sm text-zinc-500">Loading...</span>
+                      ) : null}
+                      <button
+                        className="rounded-md border border-zinc-300 bg-white px-3 py-1.5 text-xs font-medium text-zinc-700 hover:bg-zinc-100 disabled:cursor-not-allowed disabled:text-zinc-400"
+                        disabled={isLoadingDetails}
+                        onClick={refreshSelectedAgentDetails}
+                        type="button"
+                      >
+                        Refresh
+                      </button>
+                    </div>
                   </div>
 
                   <div className="mt-4 overflow-x-auto">
