@@ -5,6 +5,8 @@ import { FormEvent, useState } from "react";
 
 type CreatedAgent = {
   business_name?: string | null;
+  agent_purpose?: string | null;
+  business_knowledge?: string | null;
   name?: string | null;
   assemblyai_agent_id?: string | null;
 };
@@ -13,10 +15,27 @@ type AgentResponse = CreatedAgent & {
   error?: string;
 };
 
+const AGENT_PURPOSE_OPTIONS = [
+  { value: "general_receptionist", label: "General receptionist" },
+  { value: "appointment_booking", label: "Appointment booking" },
+  { value: "product_inquiry", label: "Product inquiry" },
+  { value: "customer_support", label: "Customer support" },
+  { value: "lead_qualification", label: "Lead qualification" },
+  { value: "feedback_collection", label: "Feedback collection" },
+];
+
+function formatPurpose(value?: string | null): string {
+  const option = AGENT_PURPOSE_OPTIONS.find((purpose) => purpose.value === value);
+
+  return option?.label ?? "General receptionist";
+}
+
 export default function Home() {
   const [businessName, setBusinessName] = useState("");
   const [industry, setIndustry] = useState("");
   const [agentName, setAgentName] = useState("");
+  const [agentPurpose, setAgentPurpose] = useState("general_receptionist");
+  const [businessKnowledge, setBusinessKnowledge] = useState("");
   const [createdAgent, setCreatedAgent] = useState<CreatedAgent | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -31,6 +50,7 @@ export default function Home() {
     const trimmedBusinessName = businessName.trim();
     const trimmedIndustry = industry.trim();
     const trimmedAgentName = agentName.trim();
+    const trimmedBusinessKnowledge = businessKnowledge.trim();
 
     if (!trimmedBusinessName || !trimmedAgentName) {
       setError("Business name and agent name are required.");
@@ -47,6 +67,8 @@ export default function Home() {
           business_name: trimmedBusinessName,
           industry: trimmedIndustry,
           name: trimmedAgentName,
+          agent_purpose: agentPurpose,
+          business_knowledge: trimmedBusinessKnowledge,
         }),
       });
       const data = (await response.json()) as AgentResponse;
@@ -59,6 +81,8 @@ export default function Home() {
       setBusinessName("");
       setIndustry("");
       setAgentName("");
+      setAgentPurpose("general_receptionist");
+      setBusinessKnowledge("");
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to create agent.");
     } finally {
@@ -85,8 +109,9 @@ export default function Home() {
           <div>
             <h1 className="text-3xl font-semibold">AI Front Desk</h1>
             <p className="mt-2 max-w-2xl text-sm text-zinc-600">
-              A voice AI that answers your business calls, books appointments, and
-              captures leads - works for any type of business.
+              VoiceAgent Studio creates purpose-driven AssemblyAI voice agents
+              from a business prompt - from front desk booking to support,
+              product questions, lead qualification, and feedback.
             </p>
           </div>
           <Link
@@ -147,6 +172,40 @@ export default function Home() {
                 />
               </div>
 
+              <div className="flex flex-col gap-2">
+                <label className="text-sm font-medium" htmlFor="agent-purpose">
+                  Agent purpose
+                </label>
+                <select
+                  id="agent-purpose"
+                  className="rounded-md border border-zinc-300 bg-white px-3 py-2 text-sm outline-none focus:border-zinc-900"
+                  value={agentPurpose}
+                  onChange={(event) => setAgentPurpose(event.target.value)}
+                >
+                  {AGENT_PURPOSE_OPTIONS.map((purpose) => (
+                    <option key={purpose.value} value={purpose.value}>
+                      {purpose.label}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div className="flex flex-col gap-2">
+                <label
+                  className="text-sm font-medium"
+                  htmlFor="business-knowledge"
+                >
+                  Business knowledge
+                </label>
+                <textarea
+                  id="business-knowledge"
+                  className="min-h-32 resize-y rounded-md border border-zinc-300 px-3 py-2 text-sm outline-none focus:border-zinc-900"
+                  placeholder="Products, services, FAQs, policies, pricing notes, support steps, or anything the agent should know."
+                  value={businessKnowledge}
+                  onChange={(event) => setBusinessKnowledge(event.target.value)}
+                />
+              </div>
+
               {error ? (
                 <div className="rounded-md border border-red-200 bg-red-50 p-3 text-sm text-red-700">
                   {error}
@@ -171,9 +230,9 @@ export default function Home() {
               {[
                 "Create agent",
                 "Start inbound call",
-                "Capture lead",
-                "Confirm appointment",
-                "View booking + feedback",
+                "Answer for its purpose",
+                "Capture confirmed follow-up",
+                "Review dashboard workflow",
               ].map((step, index) => (
                 <li className="flex gap-3" key={step}>
                   <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-zinc-950 text-xs font-semibold text-white">
@@ -184,8 +243,9 @@ export default function Home() {
               ))}
             </ol>
             <p className="mt-4 text-sm text-zinc-500">
-              Use the browser mic for the inbound call, then open the pending lead
-              from the dashboard to run the confirmation call.
+              Use the browser mic for the inbound call. Booking agents can still
+              run the confirmation flow, while other purposes capture follow-up
+              details only when useful.
             </p>
           </section>
         </div>
@@ -198,8 +258,8 @@ export default function Home() {
               </h2>
               <p className="mt-2 max-w-2xl text-sm text-zinc-600">
                 Static demo data for judging: this is what the dashboard shows after
-                an inbound lead is captured and the follow-up confirmation call saves
-                a booking plus feedback.
+                an appointment-booking lead is captured and the follow-up
+                confirmation call saves a booking plus feedback.
               </p>
             </div>
             <Link
@@ -268,6 +328,22 @@ export default function Home() {
                 </div>
                 <p className="mt-1 text-sm text-zinc-800">
                   {createdAgent.name ?? "Not recorded"}
+                </p>
+              </div>
+              <div>
+                <div className="text-xs font-semibold uppercase text-zinc-500">
+                  Purpose
+                </div>
+                <p className="mt-1 text-sm text-zinc-800">
+                  {formatPurpose(createdAgent.agent_purpose)}
+                </p>
+              </div>
+              <div>
+                <div className="text-xs font-semibold uppercase text-zinc-500">
+                  Knowledge
+                </div>
+                <p className="mt-1 line-clamp-3 text-sm text-zinc-800">
+                  {createdAgent.business_knowledge ?? "No knowledge provided"}
                 </p>
               </div>
             </div>

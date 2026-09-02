@@ -8,6 +8,8 @@ type Agent = {
   business_name: string | null;
   industry: string | null;
   name: string | null;
+  agent_purpose: string | null;
+  business_knowledge: string | null;
   assemblyai_agent_id: string | null;
   created_at: string | null;
 };
@@ -99,6 +101,20 @@ function formatPlainDate(value: string | null): string {
 
 function formatStatusLabel(value: string | null): string {
   return displayValue(value).replaceAll("_", " ");
+}
+
+function formatPurpose(value: string | null): string {
+  return displayValue(value).replaceAll("_", " ");
+}
+
+function formatKnowledgePreview(value: string | null): string {
+  if (!value || value.trim().length === 0) {
+    return "No business knowledge provided.";
+  }
+
+  const compact = value.trim().replace(/\s+/g, " ");
+
+  return compact.length > 220 ? `${compact.slice(0, 220)}...` : compact;
 }
 
 function getBadgeClass(value: string | null): string {
@@ -279,7 +295,8 @@ export default function DashboardPage() {
           <div>
             <h1 className="text-3xl font-semibold">AI Front Desk Dashboard</h1>
             <p className="mt-2 text-sm text-zinc-600">
-              Review captured calls and leads for each voice agent.
+              Review captured calls, leads, and optional booking workflows for
+              each purpose-driven voice agent.
             </p>
           </div>
           <Link
@@ -331,6 +348,9 @@ export default function DashboardPage() {
                         <div className="mt-1 text-xs text-zinc-500">
                           {displayValue(agent.industry)}
                         </div>
+                        <div className="mt-1 text-xs font-medium capitalize text-zinc-600">
+                          {formatPurpose(agent.agent_purpose)}
+                        </div>
                         <div className="mt-1 text-sm text-zinc-700">
                           {displayValue(agent.name)}
                         </div>
@@ -370,6 +390,26 @@ export default function DashboardPage() {
                         {displayValue(selectedAgent.name)} -{" "}
                         {displayValue(selectedAgent.industry)}
                       </p>
+                      <div className="mt-4 grid gap-3 sm:grid-cols-2">
+                        <div className="rounded-md border border-zinc-200 bg-zinc-50 p-3">
+                          <div className="text-xs font-semibold uppercase text-zinc-500">
+                            Purpose
+                          </div>
+                          <p className="mt-1 text-sm capitalize text-zinc-800">
+                            {formatPurpose(selectedAgent.agent_purpose)}
+                          </p>
+                        </div>
+                        <div className="rounded-md border border-zinc-200 bg-zinc-50 p-3">
+                          <div className="text-xs font-semibold uppercase text-zinc-500">
+                            Knowledge preview
+                          </div>
+                          <p className="mt-1 line-clamp-3 text-sm text-zinc-700">
+                            {formatKnowledgePreview(
+                              selectedAgent.business_knowledge,
+                            )}
+                          </p>
+                        </div>
+                      </div>
                     </div>
                     {selectedAgent.assemblyai_agent_id ? (
                       <Link
@@ -467,9 +507,16 @@ export default function DashboardPage() {
 
                 <section className="min-w-0 rounded-lg border border-zinc-200 bg-white p-4">
                   <div className="flex items-center justify-between gap-4">
-                    <h2 className="text-sm font-semibold uppercase tracking-wide text-zinc-500">
-                      Leads
-                    </h2>
+                    <div>
+                      <h2 className="text-sm font-semibold uppercase tracking-wide text-zinc-500">
+                        Leads and follow-ups
+                      </h2>
+                      <p className="mt-1 text-xs text-zinc-500">
+                        Booking and confirmation columns are optional workflow
+                        fields; non-booking agents can use leads for follow-up,
+                        support, product inquiries, qualification, or feedback.
+                      </p>
+                    </div>
                     <div className="flex items-center gap-3">
                       {isLoadingDetails ? (
                         <span className="text-sm text-zinc-500">Loading...</span>
@@ -499,10 +546,18 @@ export default function DashboardPage() {
                             <th className="py-2 pr-4 font-semibold">Request</th>
                             <th className="py-2 pr-4 font-semibold">Preferred time</th>
                             <th className="py-2 pr-4 font-semibold">Status</th>
-                            <th className="py-2 pr-4 font-semibold">Confirmation</th>
-                            <th className="py-2 pr-4 font-semibold">Booking</th>
-                            <th className="py-2 pr-4 font-semibold">Confirmed date</th>
-                            <th className="py-2 pr-4 font-semibold">Confirmed time</th>
+                            <th className="py-2 pr-4 font-semibold">
+                              Optional confirmation
+                            </th>
+                            <th className="py-2 pr-4 font-semibold">
+                              Optional booking
+                            </th>
+                            <th className="py-2 pr-4 font-semibold">
+                              Optional confirmed date
+                            </th>
+                            <th className="py-2 pr-4 font-semibold">
+                              Optional confirmed time
+                            </th>
                             <th className="py-2 pr-4 font-semibold">Rating</th>
                             <th className="py-2 pr-4 font-semibold">Feedback</th>
                             <th className="py-2 pr-4 font-semibold">Notes</th>

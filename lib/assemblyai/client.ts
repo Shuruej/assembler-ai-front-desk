@@ -4,6 +4,8 @@ export type CreateAssemblyAIAgentInput = {
   name: string;
   businessName: string;
   industry?: string | null;
+  agentPurpose?: string | null;
+  businessKnowledge?: string | null;
 };
 
 export type AssemblyAIAgent = {
@@ -22,6 +24,45 @@ type AssemblyAIErrorResponse = {
   detail?: string;
   error?: string;
   code?: string;
+};
+
+const PURPOSE_LABELS: Record<string, string> = {
+  general_receptionist: "general receptionist",
+  appointment_booking: "appointment booking",
+  product_inquiry: "product inquiry",
+  customer_support: "customer support",
+  lead_qualification: "lead qualification",
+  feedback_collection: "feedback collection",
+};
+
+const PURPOSE_INSTRUCTIONS: Record<string, string> = {
+  general_receptionist:
+    "Route the conversation naturally. Answer basic questions from the provided business knowledge, identify the caller's need, and capture follow-up details when staff should respond.",
+  appointment_booking:
+    "Focus on booking intent. Gather the service requested, preferred date or time, caller name, phone number, and any scheduling notes before capturing the lead.",
+  product_inquiry:
+    "Answer product, service, pricing, availability, and policy questions from business knowledge first. Capture a lead only when the caller wants follow-up, an availability update, a quote, or contact from staff.",
+  customer_support:
+    "Help with support questions using the provided business knowledge, policies, and troubleshooting notes. Capture a lead only when the issue is unresolved, sensitive, or needs human follow-up.",
+  lead_qualification:
+    "Qualify interest by learning the caller's need, budget or priority when volunteered, timeline, fit, and best contact details. Capture the lead when the caller is a plausible opportunity or requests next steps.",
+  feedback_collection:
+    "Focus on collecting concise feedback, including a rating when appropriate, comments, and whether the caller wants staff follow-up. Capture a lead when feedback needs follow-up or the caller asks to be contacted.",
+};
+
+const TOOL_DESCRIPTIONS: Record<string, string> = {
+  general_receptionist:
+    "Capture a follow-up lead after explicit read-back confirmation when the caller needs staff response, routing, a service request, or a saved inquiry.",
+  appointment_booking:
+    "Capture a booking-intent lead after explicit read-back confirmation when the caller clearly wants an appointment, reservation, or scheduled service.",
+  product_inquiry:
+    "Capture a follow-up lead after explicit read-back confirmation only when the caller wants staff contact, an availability update, quote, preorder, or product/service follow-up.",
+  customer_support:
+    "Capture a support follow-up lead after explicit read-back confirmation only when the issue is unresolved, needs human review, or the caller requests contact from staff.",
+  lead_qualification:
+    "Capture a qualified lead after explicit read-back confirmation when the caller has a relevant need, buying or service interest, and usable contact details.",
+  feedback_collection:
+    "Capture a feedback follow-up lead after explicit read-back confirmation when feedback should be logged for staff, includes a requested response, or requires escalation.",
 };
 
 function requireAssemblyAIApiKey(): string {
@@ -44,11 +85,46 @@ async function parseAssemblyAIResponse(response: Response) {
   return response.json();
 }
 
+function normalizePurpose(value?: string | null): string {
+  return value && PURPOSE_LABELS[value] ? value : "general_receptionist";
+}
+
+function buildSystemPrompt({
+  name,
+  businessName,
+  industry,
+  agentPurpose,
+  businessKnowledge,
+}: CreateAssemblyAIAgentInput): string {
+  const normalizedPurpose = normalizePurpose(agentPurpose);
+  const knowledge = businessKnowledge?.trim();
+
+  return [
+    `You are ${name}, a professional ${PURPOSE_LABELS[normalizedPurpose]} voice agent for ${businessName}.`,
+    industry
+      ? `The business category is ${industry}.`
+      : "The business category may vary.",
+    `Agent purpose: ${PURPOSE_LABELS[normalizedPurpose]}. ${PURPOSE_INSTRUCTIONS[normalizedPurpose]}`,
+    knowledge
+      ? `Use this business knowledge as your primary source for business-specific answers: ${knowledge}`
+      : "No detailed business knowledge was provided, so ask concise clarifying questions and do not invent business-specific details.",
+    "Do not invent business-specific details, policies, prices, availability, or commitments that are not in the provided business knowledge or clearly supplied by the caller.",
+    "Track the details the caller has already clearly provided in this conversation and reuse them; never ask again for information they have already given.",
+    `Tool use guidance for capture_lead: ${TOOL_DESCRIPTIONS[normalizedPurpose]}`,
+    "Never call the capture_lead tool until you have read the captured details back to the caller and the caller has explicitly confirmed with an affirmative response such as yes, correct, or that's right. This confirmation step is required even if the caller gave every detail in a single turn. When reading a phone number back, speak each digit individually and clearly, grouped in short pairs or triples with pauses, for example: zero three zero zero, one two three, one two three four, and ask: did I get that number right? If the caller corrects any detail, repeat the corrected version back once more and wait for explicit confirmation again before calling capture_lead. Keep the confirmation exchange brief and natural, using 1-2 short sentences, not robotic or repetitive beyond what is needed.",
+    "Keep responses concise, natural, and suitable for a live voice conversation, not robotic.",
+  ].join(" ");
+}
+
 export async function createAssemblyAIAgent({
   name,
   businessName,
   industry,
+  agentPurpose,
+  businessKnowledge,
 }: CreateAssemblyAIAgentInput): Promise<AssemblyAIAgent> {
+  const normalizedPurpose = normalizePurpose(agentPurpose);
+
   const response = await fetch(`${ASSEMBLYAI_AGENTS_BASE_URL}/v1/agents`, {
     method: "POST",
     headers: {
@@ -57,25 +133,20 @@ export async function createAssemblyAIAgent({
     },
     body: JSON.stringify({
       name,
-      system_prompt: [
-        `You are ${name}, a professional voice front-desk agent for ${businessName}.`,
-        industry
-          ? `The business category is ${industry}.`
-          : "The business category may vary.",
-        "Help callers with general inquiries, service requests, booking intent, hours, and follow-up needs.",
-        "Track the details the caller has already clearly provided in this conversation and reuse them; never ask again for information they have already given.",
-        "Never call the capture_lead tool until you have read the captured details back to the caller and the caller has explicitly confirmed with an affirmative response such as yes, correct, or that's right. This confirmation step is required even if the caller gave every detail in a single turn. When reading a phone number back, speak each digit individually and clearly, grouped in short pairs or triples with pauses, for example: zero three zero zero, one two three, one two three four, and ask: did I get that number right? If the caller corrects any detail, repeat the corrected version back once more and wait for explicit confirmation again before calling capture_lead. Keep the confirmation exchange brief and natural, using 1-2 short sentences, not robotic or repetitive beyond what is needed.",
-        "Keep responses concise, natural, and suitable for a live voice conversation, not robotic.",
-        "Do not invent business-specific details that have not been provided.",
-      ].join(" "),
+      system_prompt: buildSystemPrompt({
+        name,
+        businessName,
+        industry,
+        agentPurpose: normalizedPurpose,
+        businessKnowledge,
+      }),
       greeting: `Thanks for calling ${businessName}. How can I help you today?`,
       voice: { voice_id: "alba" },
       tools: [
         {
           type: "function",
           name: "capture_lead",
-          description:
-            "Capture a generic booking request, inquiry, or follow-up lead once you have gathered enough caller information to log it. Use this for any industry when the caller expresses clear interest, asks for a booking, requests a service, or wants follow-up.",
+          description: TOOL_DESCRIPTIONS[normalizedPurpose],
           parameters: {
             type: "object",
             properties: {
