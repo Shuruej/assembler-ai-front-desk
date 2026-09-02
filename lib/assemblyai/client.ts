@@ -63,7 +63,9 @@ export async function createAssemblyAIAgent({
           ? `The business category is ${industry}.`
           : "The business category may vary.",
         "Help callers with general inquiries, service requests, booking intent, hours, and follow-up needs.",
-        "Keep responses concise, natural, and suitable for a live voice conversation.",
+        "Track the details the caller has already clearly provided in this conversation and reuse them; never ask again for information they have already given.",
+        "Before calling the capture_lead tool, briefly read back the key captured details - name, phone number, and request - in one natural sentence and give the caller a chance to correct anything, then proceed.",
+        "Keep responses concise, natural, and suitable for a live voice conversation, not robotic.",
         "Do not invent business-specific details that have not been provided.",
       ].join(" "),
       greeting: `Thanks for calling ${businessName}. How can I help you today?`,
