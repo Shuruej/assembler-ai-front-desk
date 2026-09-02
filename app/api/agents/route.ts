@@ -24,6 +24,20 @@ function normalizeOptionalString(value: unknown): string | null {
   return trimmed.length > 0 ? trimmed : null;
 }
 
+export async function GET() {
+  const supabase = createSupabaseServiceRoleClient();
+  const { data: agents, error } = await supabase
+    .from("agents")
+    .select("*")
+    .order("created_at", { ascending: false });
+
+  if (error) {
+    return Response.json({ error: error.message }, { status: 500 });
+  }
+
+  return Response.json(agents ?? []);
+}
+
 export async function POST(request: Request) {
   let body: CreateAgentRequestBody;
 
