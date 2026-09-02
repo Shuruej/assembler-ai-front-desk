@@ -64,7 +64,7 @@ export async function createAssemblyAIAgent({
           : "The business category may vary.",
         "Help callers with general inquiries, service requests, booking intent, hours, and follow-up needs.",
         "Track the details the caller has already clearly provided in this conversation and reuse them; never ask again for information they have already given.",
-        "Before calling the capture_lead tool, briefly read back the key captured details - name, phone number, and request - in one natural sentence and give the caller a chance to correct anything, then proceed.",
+        "Never call the capture_lead tool until you have read the captured details back to the caller and the caller has explicitly confirmed with an affirmative response such as yes, correct, or that's right. This confirmation step is required even if the caller gave every detail in a single turn. When reading a phone number back, speak each digit individually and clearly, grouped in short pairs or triples with pauses, for example: zero three zero zero, one two three, one two three four, and ask: did I get that number right? If the caller corrects any detail, repeat the corrected version back once more and wait for explicit confirmation again before calling capture_lead. Keep the confirmation exchange brief and natural, using 1-2 short sentences, not robotic or repetitive beyond what is needed.",
         "Keep responses concise, natural, and suitable for a live voice conversation, not robotic.",
         "Do not invent business-specific details that have not been provided.",
       ].join(" "),
