@@ -36,10 +36,6 @@ async function parseAssemblyAIError(response: Response): Promise<string> {
 export async function GET(request: Request) {
   const agentId = getAgentIdFromRequest(request);
 
-  if (!agentId) {
-    return Response.json({ error: "agent_id is required." }, { status: 400 });
-  }
-
   try {
     const url = new URL(ASSEMBLYAI_TOKEN_URL);
     url.searchParams.set("expires_in_seconds", "300");
@@ -67,7 +63,11 @@ export async function GET(request: Request) {
       );
     }
 
-    return Response.json({ token: data.token, agent_id: agentId });
+    if (agentId) {
+      return Response.json({ token: data.token, agent_id: agentId });
+    }
+
+    return Response.json({ token: data.token });
   } catch (error) {
     return Response.json(
       {
