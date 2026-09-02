@@ -165,15 +165,88 @@ export default function Home() {
 
           <section className="rounded-lg border border-zinc-200 bg-white p-4">
             <h2 className="text-sm font-semibold uppercase tracking-wide text-zinc-500">
-              How it works
+              Demo flow
             </h2>
-            <ol className="mt-4 flex list-decimal flex-col gap-3 pl-5 text-sm text-zinc-700">
-              <li>Create your agent.</li>
-              <li>Test it with your voice.</li>
-              <li>View captured leads on your dashboard.</li>
+            <ol className="mt-4 flex flex-col gap-3 text-sm text-zinc-700">
+              {[
+                "Create agent",
+                "Start inbound call",
+                "Capture lead",
+                "Confirm appointment",
+                "View booking + feedback",
+              ].map((step, index) => (
+                <li className="flex gap-3" key={step}>
+                  <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-zinc-950 text-xs font-semibold text-white">
+                    {index + 1}
+                  </span>
+                  <span className="pt-0.5">{step}</span>
+                </li>
+              ))}
             </ol>
+            <p className="mt-4 text-sm text-zinc-500">
+              Use the browser mic for the inbound call, then open the pending lead
+              from the dashboard to run the confirmation call.
+            </p>
           </section>
         </div>
+
+        <section className="rounded-lg border border-zinc-200 bg-white p-4">
+          <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+            <div>
+              <h2 className="text-sm font-semibold uppercase tracking-wide text-zinc-500">
+                Successful workflow snapshot
+              </h2>
+              <p className="mt-2 max-w-2xl text-sm text-zinc-600">
+                Static demo data for judging: this is what the dashboard shows after
+                an inbound lead is captured and the follow-up confirmation call saves
+                a booking plus feedback.
+              </p>
+            </div>
+            <Link
+              className="inline-flex w-fit rounded-md border border-zinc-300 bg-white px-4 py-2 text-sm font-medium"
+              href="/dashboard"
+            >
+              Open dashboard
+            </Link>
+          </div>
+
+          <div className="mt-5 grid gap-4 md:grid-cols-3">
+            <div className="rounded-md border border-sky-200 bg-sky-50 p-4">
+              <div className="text-xs font-semibold uppercase text-sky-700">
+                Inbound call
+              </div>
+              <p className="mt-2 text-sm font-medium text-zinc-950">
+                Maya Chen asked for a haircut on Friday afternoon.
+              </p>
+              <p className="mt-2 text-xs text-zinc-600">
+                Agent read back name, phone, service, and preferred time before
+                saving the lead.
+              </p>
+            </div>
+            <div className="rounded-md border border-amber-200 bg-amber-50 p-4">
+              <div className="text-xs font-semibold uppercase text-amber-700">
+                Confirmation call
+              </div>
+              <p className="mt-2 text-sm font-medium text-zinc-950">
+                Confirmed for Sep 5, 2026 at 2:30 PM.
+              </p>
+              <p className="mt-2 font-mono text-xs text-zinc-700">
+                Booking ID: BK-8274
+              </p>
+            </div>
+            <div className="rounded-md border border-emerald-200 bg-emerald-50 p-4">
+              <div className="text-xs font-semibold uppercase text-emerald-700">
+                Feedback captured
+              </div>
+              <p className="mt-2 text-sm font-medium text-zinc-950">
+                Rating: 5/5
+              </p>
+              <p className="mt-2 text-xs text-zinc-600">
+                "Fast and clear. I liked that the agent repeated everything back."
+              </p>
+            </div>
+          </div>
+        </section>
 
         {createdAgent ? (
           <section className="rounded-lg border border-zinc-200 bg-white p-4">

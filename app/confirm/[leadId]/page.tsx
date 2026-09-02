@@ -1,6 +1,6 @@
 "use client";
 
-import { use, useEffect, useRef, useState } from "react";
+import { use, useCallback, useEffect, useRef, useState } from "react";
 
 type TranscriptEntry = {
   id: string;
@@ -119,6 +119,52 @@ function formatDate(value: string | null): string {
   }).format(date);
 }
 
+function formatPlainDate(value: string | null): string {
+  if (!value) return "Not recorded";
+
+  const date = new Date(`${value}T00:00:00`);
+
+  if (Number.isNaN(date.getTime())) {
+    return value;
+  }
+
+  return new Intl.DateTimeFormat(undefined, {
+    dateStyle: "medium",
+  }).format(date);
+}
+
+function formatRating(value: number | null): string {
+  return value === null ? "Not recorded" : `${value}/5`;
+}
+
+function formatStatusLabel(value: string | null): string {
+  return displayValue(value).replaceAll("_", " ");
+}
+
+function getStatusBadgeClass(value: string | null): string {
+  if (value === "confirmed") {
+    return "border-emerald-200 bg-emerald-50 text-emerald-700";
+  }
+
+  if (value === "pending") {
+    return "border-amber-200 bg-amber-50 text-amber-700";
+  }
+
+  return "border-zinc-200 bg-zinc-50 text-zinc-600";
+}
+
+function StatusBadge({ value }: { value: string | null }) {
+  return (
+    <span
+      className={`inline-flex rounded-full border px-2 py-0.5 text-xs font-medium capitalize ${getStatusBadgeClass(
+        value,
+      )}`}
+    >
+      {formatStatusLabel(value)}
+    </span>
+  );
+}
+
 function buildConfirmationPrompt(context: ConfirmationContext): string {
   const businessName = displayValue(context.business_name);
   const industry = displayValue(context.industry);
@@ -169,13 +215,37 @@ export default function ConfirmLeadPage({
   const pendingToolResultsRef = useRef<{ call_id: string; result: string }[]>([]);
   const hasEndedRef = useRef(false);
 
+  const loadConfirmationContext = useCallback(
+    async ({
+      loadingStatus = "Loading lead...",
+      readyStatus = "Ready",
+    }: {
+      loadingStatus?: string | null;
+      readyStatus?: string;
+    } = {}) => {
+      if (loadingStatus) {
+        setStatus(loadingStatus);
+      }
+      setError(null);
+
+      try {
+        const data = await fetchJson<ConfirmationContext>(
+          `/api/leads/${leadId}/confirmation-context`,
+        );
+        setContext(data);
+        setStatus(readyStatus);
+      } catch (err) {
+        setError(err instanceof Error ? err.message : "Lead not found.");
+        setStatus("Unable to load lead");
+      }
+    },
+    [leadId],
+  );
+
   useEffect(() => {
     let ignore = false;
 
     async function loadContext() {
-      setStatus("Loading lead...");
-      setError(null);
-
       try {
         const data = await fetchJson<ConfirmationContext>(
           `/api/leads/${leadId}/confirmation-context`,
@@ -312,6 +382,10 @@ export default function ConfirmLeadPage({
           role: "system",
           text: `Booking saved${data.booking_id ? `: ${data.booking_id}` : "."}`,
         });
+        await loadConfirmationContext({
+          loadingStatus: null,
+          readyStatus: "Booking saved",
+        });
       } else {
         const data = await fetchJson<Lead>(`/api/leads/${leadId}/feedback`, {
           method: "POST",
@@ -330,6 +404,10 @@ export default function ConfirmLeadPage({
           id: `system-feedback-${Date.now()}`,
           role: "system",
           text: "Feedback saved.",
+        });
+        await loadConfirmationContext({
+          loadingStatus: null,
+          readyStatus: "Feedback saved",
         });
       }
     } catch (err) {
@@ -718,6 +796,60 @@ export default function ConfirmLeadPage({
             </dl>
           ) : null}
         </section>
+
+        {context ? (
+          <section className="rounded-lg border border-zinc-200 bg-white p-4">
+            <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+              <h2 className="text-sm font-semibold uppercase tracking-wide text-zinc-500">
+                After-call results
+              </h2>
+              <StatusBadge value={context.lead.confirmation_status} />
+            </div>
+
+            <dl className="mt-4 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+              <div className="rounded-md bg-zinc-50 p-3">
+                <dt className="text-xs font-semibold uppercase text-zinc-500">
+                  Booking ID
+                </dt>
+                <dd className="mt-1 font-mono text-sm text-zinc-900">
+                  {displayValue(context.lead.booking_id)}
+                </dd>
+              </div>
+              <div className="rounded-md bg-zinc-50 p-3">
+                <dt className="text-xs font-semibold uppercase text-zinc-500">
+                  Confirmed date
+                </dt>
+                <dd className="mt-1 text-sm text-zinc-900">
+                  {formatPlainDate(context.lead.confirmed_date)}
+                </dd>
+              </div>
+              <div className="rounded-md bg-zinc-50 p-3">
+                <dt className="text-xs font-semibold uppercase text-zinc-500">
+                  Confirmed time
+                </dt>
+                <dd className="mt-1 text-sm text-zinc-900">
+                  {displayValue(context.lead.confirmed_time)}
+                </dd>
+              </div>
+              <div className="rounded-md bg-zinc-50 p-3">
+                <dt className="text-xs font-semibold uppercase text-zinc-500">
+                  Feedback rating
+                </dt>
+                <dd className="mt-1 text-sm text-zinc-900">
+                  {formatRating(context.lead.feedback_rating)}
+                </dd>
+              </div>
+              <div className="rounded-md bg-zinc-50 p-3 sm:col-span-2">
+                <dt className="text-xs font-semibold uppercase text-zinc-500">
+                  Feedback notes
+                </dt>
+                <dd className="mt-1 text-sm text-zinc-900">
+                  {displayValue(context.lead.feedback_notes)}
+                </dd>
+              </div>
+            </dl>
+          </section>
+        ) : null}
 
         <section className="flex flex-col gap-3 rounded-lg border border-zinc-200 bg-white p-4">
           <div className="flex gap-3">

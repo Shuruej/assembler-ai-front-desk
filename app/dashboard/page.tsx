@@ -17,6 +17,7 @@ type Call = {
   started_at: string | null;
   duration_seconds: number | null;
   status: string | null;
+  call_type: string | null;
   transcript: string | null;
 };
 
@@ -30,6 +31,11 @@ type Lead = {
   status: string | null;
   notes: string | null;
   confirmation_status: string | null;
+  booking_id: string | null;
+  confirmed_date: string | null;
+  confirmed_time: string | null;
+  feedback_rating: number | null;
+  feedback_notes: string | null;
 };
 
 async function fetchJson<T>(url: string): Promise<T> {
@@ -75,6 +81,56 @@ function formatDuration(seconds: number | null): string {
 
 function displayValue(value: string | null): string {
   return value && value.trim().length > 0 ? value : "Not recorded";
+}
+
+function formatPlainDate(value: string | null): string {
+  if (!value) return "Not recorded";
+
+  const date = new Date(`${value}T00:00:00`);
+
+  if (Number.isNaN(date.getTime())) {
+    return value;
+  }
+
+  return new Intl.DateTimeFormat(undefined, {
+    dateStyle: "medium",
+  }).format(date);
+}
+
+function formatStatusLabel(value: string | null): string {
+  return displayValue(value).replaceAll("_", " ");
+}
+
+function getBadgeClass(value: string | null): string {
+  if (value === "confirmation" || value === "confirmed") {
+    return "border-emerald-200 bg-emerald-50 text-emerald-700";
+  }
+
+  if (value === "pending") {
+    return "border-amber-200 bg-amber-50 text-amber-700";
+  }
+
+  if (value === "inbound") {
+    return "border-sky-200 bg-sky-50 text-sky-700";
+  }
+
+  return "border-zinc-200 bg-zinc-50 text-zinc-600";
+}
+
+function Badge({ value }: { value: string | null }) {
+  return (
+    <span
+      className={`inline-flex whitespace-nowrap rounded-full border px-2 py-0.5 text-xs font-medium capitalize ${getBadgeClass(
+        value,
+      )}`}
+    >
+      {formatStatusLabel(value)}
+    </span>
+  );
+}
+
+function formatRating(value: number | null): string {
+  return value === null ? "Not recorded" : `${value}/5`;
 }
 
 function getDemoHref(assemblyAIAgentId: string): string {
@@ -240,7 +296,7 @@ export default function DashboardPage() {
           </section>
         ) : null}
 
-        <div className="grid gap-6 lg:grid-cols-[18rem_1fr]">
+        <div className="grid min-w-0 gap-6 lg:grid-cols-[18rem_minmax(0,1fr)]">
           <aside className="rounded-lg border border-zinc-200 bg-white p-4">
             <h2 className="text-sm font-semibold uppercase tracking-wide text-zinc-500">
               Agents
@@ -294,7 +350,7 @@ export default function DashboardPage() {
             </div>
           </aside>
 
-          <div className="flex flex-col gap-6">
+          <div className="flex min-w-0 flex-col gap-6">
             {!selectedAgent ? (
               <section className="rounded-lg border border-zinc-200 bg-white p-8 text-center">
                 <h2 className="text-lg font-semibold">Select an agent</h2>
@@ -304,7 +360,7 @@ export default function DashboardPage() {
               </section>
             ) : (
               <>
-                <section className="rounded-lg border border-zinc-200 bg-white p-4">
+                <section className="min-w-0 rounded-lg border border-zinc-200 bg-white p-4">
                   <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
                     <div>
                       <h2 className="text-xl font-semibold">
@@ -326,7 +382,7 @@ export default function DashboardPage() {
                   </div>
                 </section>
 
-                <section className="rounded-lg border border-zinc-200 bg-white p-4">
+                <section className="min-w-0 rounded-lg border border-zinc-200 bg-white p-4">
                   <div className="flex items-center justify-between gap-4">
                     <h2 className="text-sm font-semibold uppercase tracking-wide text-zinc-500">
                       Calls
@@ -352,10 +408,11 @@ export default function DashboardPage() {
                         No calls captured for this agent yet.
                       </p>
                     ) : (
-                      <table className="w-full min-w-[44rem] text-left text-sm">
+                      <table className="w-full min-w-[52rem] text-left text-sm">
                         <thead className="border-b border-zinc-200 text-xs uppercase text-zinc-500">
                           <tr>
                             <th className="py-2 pr-4 font-semibold">Started</th>
+                            <th className="py-2 pr-4 font-semibold">Type</th>
                             <th className="py-2 pr-4 font-semibold">Duration</th>
                             <th className="py-2 pr-4 font-semibold">Status</th>
                             <th className="py-2 font-semibold">Transcript</th>
@@ -375,6 +432,9 @@ export default function DashboardPage() {
                               <tr key={call.id} className="align-top">
                                 <td className="py-3 pr-4 text-zinc-700">
                                   {formatDate(call.started_at)}
+                                </td>
+                                <td className="py-3 pr-4 text-zinc-700">
+                                  <Badge value={call.call_type} />
                                 </td>
                                 <td className="py-3 pr-4 text-zinc-700">
                                   {formatDuration(call.duration_seconds)}
@@ -405,7 +465,7 @@ export default function DashboardPage() {
                   </div>
                 </section>
 
-                <section className="rounded-lg border border-zinc-200 bg-white p-4">
+                <section className="min-w-0 rounded-lg border border-zinc-200 bg-white p-4">
                   <div className="flex items-center justify-between gap-4">
                     <h2 className="text-sm font-semibold uppercase tracking-wide text-zinc-500">
                       Leads
@@ -431,7 +491,7 @@ export default function DashboardPage() {
                         No leads captured for this agent yet.
                       </p>
                     ) : (
-                      <table className="w-full min-w-[56rem] text-left text-sm">
+                      <table className="w-full min-w-[86rem] text-left text-sm">
                         <thead className="border-b border-zinc-200 text-xs uppercase text-zinc-500">
                           <tr>
                             <th className="py-2 pr-4 font-semibold">Customer</th>
@@ -439,6 +499,12 @@ export default function DashboardPage() {
                             <th className="py-2 pr-4 font-semibold">Request</th>
                             <th className="py-2 pr-4 font-semibold">Preferred time</th>
                             <th className="py-2 pr-4 font-semibold">Status</th>
+                            <th className="py-2 pr-4 font-semibold">Confirmation</th>
+                            <th className="py-2 pr-4 font-semibold">Booking</th>
+                            <th className="py-2 pr-4 font-semibold">Confirmed date</th>
+                            <th className="py-2 pr-4 font-semibold">Confirmed time</th>
+                            <th className="py-2 pr-4 font-semibold">Rating</th>
+                            <th className="py-2 pr-4 font-semibold">Feedback</th>
                             <th className="py-2 pr-4 font-semibold">Notes</th>
                             <th className="py-2 font-semibold">Action</th>
                           </tr>
@@ -461,8 +527,30 @@ export default function DashboardPage() {
                               <td className="py-3 pr-4 text-zinc-700">
                                 {displayValue(lead.status)}
                               </td>
-                              <td className="py-3 text-zinc-700">
-                                {displayValue(lead.notes)}
+                              <td className="py-3 pr-4 text-zinc-700">
+                                <Badge value={lead.confirmation_status} />
+                              </td>
+                              <td className="py-3 pr-4 font-mono text-xs text-zinc-700">
+                                {displayValue(lead.booking_id)}
+                              </td>
+                              <td className="py-3 pr-4 text-zinc-700">
+                                {formatPlainDate(lead.confirmed_date)}
+                              </td>
+                              <td className="py-3 pr-4 text-zinc-700">
+                                {displayValue(lead.confirmed_time)}
+                              </td>
+                              <td className="py-3 pr-4 text-zinc-700">
+                                {formatRating(lead.feedback_rating)}
+                              </td>
+                              <td className="max-w-60 py-3 pr-4 text-zinc-700">
+                                <p className="line-clamp-3">
+                                  {displayValue(lead.feedback_notes)}
+                                </p>
+                              </td>
+                              <td className="max-w-60 py-3 pr-4 text-zinc-700">
+                                <p className="line-clamp-3">
+                                  {displayValue(lead.notes)}
+                                </p>
                               </td>
                               <td className="py-3">
                                 {lead.confirmation_status === "pending" ? (
@@ -471,6 +559,13 @@ export default function DashboardPage() {
                                     href={`/confirm/${lead.id}`}
                                   >
                                     Confirm
+                                  </Link>
+                                ) : lead.confirmation_status === "confirmed" ? (
+                                  <Link
+                                    className="inline-flex rounded-md border border-emerald-200 bg-emerald-50 px-3 py-1.5 text-xs font-medium text-emerald-700 hover:bg-emerald-100"
+                                    href={`/confirm/${lead.id}`}
+                                  >
+                                    View
                                   </Link>
                                 ) : null}
                               </td>
