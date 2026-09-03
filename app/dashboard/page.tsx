@@ -38,6 +38,7 @@ type Lead = {
   confirmed_time: string | null;
   feedback_rating: number | null;
   feedback_notes: string | null;
+  is_spam: boolean | null;
 };
 
 async function fetchJson<T>(url: string): Promise<T> {
@@ -170,6 +171,49 @@ export default function DashboardPage() {
     () => agents.find((agent) => agent.id === selectedAgentId) ?? null,
     [agents, selectedAgentId],
   );
+
+  const analyticsStats = useMemo(() => {
+    const validLeads = leads.filter((lead) => lead.is_spam !== true);
+    const ratings = validLeads
+      .map((lead) => lead.feedback_rating)
+      .filter(
+        (rating): rating is number =>
+          typeof rating === "number" && Number.isFinite(rating),
+      );
+    const averageRating =
+      ratings.length > 0
+        ? ratings.reduce((total, rating) => total + rating, 0) / ratings.length
+        : null;
+
+    return [
+      {
+        label: "Total Calls",
+        value: calls.length.toString(),
+        suffix: null,
+        supportingText: "All recorded conversations",
+      },
+      {
+        label: "Leads Captured",
+        value: validLeads.length.toString(),
+        suffix: null,
+        supportingText: "Valid customer inquiries",
+      },
+      {
+        label: "Confirmed Bookings",
+        value: validLeads
+          .filter((lead) => lead.confirmation_status === "confirmed")
+          .length.toString(),
+        suffix: null,
+        supportingText: "Successfully confirmed",
+      },
+      {
+        label: "Average Rating",
+        value: averageRating === null ? "\u2014" : averageRating.toFixed(1),
+        suffix: averageRating === null ? null : "/ 5",
+        supportingText: "Customer feedback",
+      },
+    ];
+  }, [calls, leads]);
 
   useEffect(() => {
     let ignore = false;
@@ -417,6 +461,32 @@ export default function DashboardPage() {
                       </Link>
                     ) : null}
                   </div>
+                </section>
+
+                <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+                  {analyticsStats.map((stat) => (
+                    <div
+                      className="rounded-lg border border-zinc-200 bg-white p-4"
+                      key={stat.label}
+                    >
+                      <div className="text-xs font-semibold uppercase tracking-wide text-zinc-500">
+                        {stat.label}
+                      </div>
+                      <div className="mt-3 flex items-baseline gap-1.5">
+                        <span className="text-3xl font-semibold tracking-tight text-zinc-950">
+                          {stat.value}
+                        </span>
+                        {stat.suffix ? (
+                          <span className="text-sm font-medium text-zinc-500">
+                            {stat.suffix}
+                          </span>
+                        ) : null}
+                      </div>
+                      <p className="mt-2 text-sm text-zinc-500">
+                        {stat.supportingText}
+                      </p>
+                    </div>
+                  ))}
                 </section>
 
                 <section className="min-w-0 rounded-lg border border-zinc-200 bg-white p-4">
