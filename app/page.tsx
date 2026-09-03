@@ -3,6 +3,8 @@
 import Link from "next/link";
 import { FormEvent, useState } from "react";
 
+type CreationMode = "simple" | "advanced";
+
 type CreatedAgent = {
   business_name?: string | null;
   agent_purpose?: string | null;
@@ -31,6 +33,8 @@ function formatPurpose(value?: string | null): string {
 }
 
 export default function Home() {
+  const [creationMode, setCreationMode] = useState<CreationMode>("simple");
+  const [businessDescription, setBusinessDescription] = useState("");
   const [businessName, setBusinessName] = useState("");
   const [industry, setIndustry] = useState("");
   const [agentName, setAgentName] = useState("");
@@ -103,91 +107,254 @@ export default function Home() {
   }
 
   return (
-    <main className="min-h-screen bg-zinc-50 px-6 py-8 text-zinc-950">
-      <div className="mx-auto flex max-w-5xl flex-col gap-8">
-        <header className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+    <main className="min-h-screen bg-zinc-50 text-zinc-950">
+      <section className="border-b border-zinc-200 bg-white">
+        <div className="mx-auto flex max-w-6xl flex-col gap-12 px-6 py-8 lg:py-12">
+          <nav className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+            <Link className="text-lg font-semibold tracking-tight" href="/">
+              AI Front Desk
+            </Link>
+            <div className="flex flex-wrap gap-2">
+              <Link
+                className="inline-flex rounded-md border border-zinc-300 bg-white px-4 py-2 text-sm font-medium text-zinc-700 hover:bg-zinc-100"
+                href="/dashboard"
+              >
+                Dashboard
+              </Link>
+              <Link
+                className="inline-flex rounded-md bg-zinc-950 px-4 py-2 text-sm font-medium text-white hover:bg-zinc-800"
+                href="/demo"
+              >
+                Voice Demo
+              </Link>
+            </div>
+          </nav>
+
+          <div className="grid gap-10 lg:grid-cols-[minmax(0,1fr)_24rem] lg:items-center">
+            <div>
+              <span className="inline-flex rounded-full border border-sky-200 bg-sky-50 px-3 py-1 text-xs font-semibold text-sky-700">
+                Powered by AssemblyAI Voice Agents
+              </span>
+              <h1 className="mt-5 max-w-3xl text-4xl font-semibold tracking-tight text-zinc-950 sm:text-5xl">
+                Build your AI receptionist in minutes.
+              </h1>
+              <p className="mt-5 max-w-2xl text-base leading-7 text-zinc-600">
+                Describe your business or configure every detail yourself. AI
+                Front Desk handles conversations, captures leads, confirms
+                bookings, and keeps everything organized.
+              </p>
+              <div className="mt-7 flex flex-col gap-3 sm:flex-row">
+                <a
+                  className="inline-flex rounded-md bg-zinc-950 px-5 py-3 text-sm font-medium text-white hover:bg-zinc-800"
+                  href="#create-agent"
+                >
+                  Create an agent
+                </a>
+                <Link
+                  className="inline-flex rounded-md border border-zinc-300 bg-white px-5 py-3 text-sm font-medium text-zinc-700 hover:bg-zinc-100"
+                  href="/dashboard"
+                >
+                  View dashboard
+                </Link>
+              </div>
+            </div>
+
+            <div className="rounded-lg border border-zinc-200 bg-zinc-50 p-4 shadow-sm">
+              <div className="rounded-md border border-zinc-200 bg-white p-4">
+                <div className="flex items-center justify-between gap-4">
+                  <div>
+                    <p className="text-xs font-semibold uppercase tracking-wide text-zinc-500">
+                      Live workflow
+                    </p>
+                    <p className="mt-1 text-sm font-medium text-zinc-900">
+                      Inbound voice front desk
+                    </p>
+                  </div>
+                  <span className="rounded-full border border-emerald-200 bg-emerald-50 px-2.5 py-1 text-xs font-medium text-emerald-700">
+                    Ready
+                  </span>
+                </div>
+                <div className="mt-5 space-y-3">
+                  {[
+                    "Answer customer questions",
+                    "Capture lead details",
+                    "Confirm bookings",
+                    "Collect feedback",
+                  ].map((item, index) => (
+                    <div className="flex items-center gap-3" key={item}>
+                      <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-zinc-950 text-xs font-semibold text-white">
+                        {index + 1}
+                      </span>
+                      <div className="h-2 flex-1 rounded-full bg-zinc-100">
+                        <div
+                          className="h-2 rounded-full bg-sky-500"
+                          style={{ width: `${85 - index * 14}%` }}
+                        />
+                      </div>
+                      <span className="w-32 text-xs font-medium text-zinc-600">
+                        {item}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <div
+        className="mx-auto grid max-w-6xl gap-6 px-6 py-8 lg:grid-cols-[minmax(0,1fr)_22rem]"
+        id="create-agent"
+      >
+        <section className="rounded-lg border border-zinc-200 bg-white p-5 shadow-sm">
           <div>
-            <h1 className="text-3xl font-semibold">AI Front Desk</h1>
-            <p className="mt-2 max-w-2xl text-sm text-zinc-600">
-              VoiceAgent Studio creates purpose-driven AssemblyAI voice agents
-              from a business prompt - from front desk booking to support,
-              product questions, lead qualification, and feedback.
+            <h2 className="text-xl font-semibold">Create your receptionist</h2>
+            <p className="mt-2 text-sm text-zinc-600">
+              Start with a plain-language brief, or switch to advanced setup to
+              create a working AssemblyAI voice agent now.
             </p>
           </div>
-          <Link
-            className="inline-flex w-fit rounded-md border border-zinc-300 bg-white px-4 py-2 text-sm font-medium"
-            href="/dashboard"
-          >
-            View dashboard
-          </Link>
-        </header>
 
-        <div className="grid gap-6 lg:grid-cols-[1fr_20rem]">
-          <section className="rounded-lg border border-zinc-200 bg-white p-4">
-            <h2 className="text-sm font-semibold uppercase tracking-wide text-zinc-500">
-              Create agent
-            </h2>
+          <div className="mt-5 grid gap-3 md:grid-cols-2">
+            <button
+              aria-pressed={creationMode === "simple"}
+              className={`rounded-lg border p-4 text-left transition ${
+                creationMode === "simple"
+                  ? "border-zinc-950 bg-zinc-50 shadow-sm"
+                  : "border-zinc-200 bg-white hover:bg-zinc-50"
+              }`}
+              onClick={() => setCreationMode("simple")}
+              type="button"
+            >
+              <span className="inline-flex rounded-full border border-emerald-200 bg-emerald-50 px-2.5 py-1 text-xs font-semibold text-emerald-700">
+                Recommended
+              </span>
+              <span className="mt-3 block text-base font-semibold">
+                Describe your business
+              </span>
+              <span className="mt-2 block text-sm leading-6 text-zinc-600">
+                Best for business owners. Tell us what you do in plain language
+                and let AI configure the agent.
+              </span>
+            </button>
 
-            <form className="mt-4 flex flex-col gap-4" onSubmit={handleSubmit}>
-              <div className="flex flex-col gap-2">
-                <label className="text-sm font-medium" htmlFor="business-name">
-                  Business name
-                </label>
-                <input
-                  id="business-name"
-                  className="rounded-md border border-zinc-300 px-3 py-2 text-sm outline-none focus:border-zinc-900"
-                  required
-                  type="text"
-                  value={businessName}
-                  onChange={(event) => setBusinessName(event.target.value)}
-                />
-              </div>
+            <button
+              aria-pressed={creationMode === "advanced"}
+              className={`rounded-lg border p-4 text-left transition ${
+                creationMode === "advanced"
+                  ? "border-zinc-950 bg-zinc-50 shadow-sm"
+                  : "border-zinc-200 bg-white hover:bg-zinc-50"
+              }`}
+              onClick={() => setCreationMode("advanced")}
+              type="button"
+            >
+              <span className="inline-flex rounded-full border border-zinc-200 bg-white px-2.5 py-1 text-xs font-semibold text-zinc-600">
+                Full control
+              </span>
+              <span className="mt-3 block text-base font-semibold">
+                Advanced setup
+              </span>
+              <span className="mt-2 block text-sm leading-6 text-zinc-600">
+                For agent developers and users who want full control.
+              </span>
+            </button>
+          </div>
 
-              <div className="flex flex-col gap-2">
-                <label className="text-sm font-medium" htmlFor="industry">
-                  Industry
-                </label>
-                <input
-                  id="industry"
-                  className="rounded-md border border-zinc-300 px-3 py-2 text-sm outline-none focus:border-zinc-900"
-                  placeholder="e.g. salon, dental, restaurant, general"
-                  type="text"
-                  value={industry}
-                  onChange={(event) => setIndustry(event.target.value)}
-                />
-              </div>
-
-              <div className="flex flex-col gap-2">
-                <label className="text-sm font-medium" htmlFor="agent-name">
-                  Agent name
-                </label>
-                <input
-                  id="agent-name"
-                  className="rounded-md border border-zinc-300 px-3 py-2 text-sm outline-none focus:border-zinc-900"
-                  placeholder="e.g. Ava"
-                  required
-                  type="text"
-                  value={agentName}
-                  onChange={(event) => setAgentName(event.target.value)}
-                />
-              </div>
-
-              <div className="flex flex-col gap-2">
-                <label className="text-sm font-medium" htmlFor="agent-purpose">
-                  Agent purpose
-                </label>
-                <select
-                  id="agent-purpose"
-                  className="rounded-md border border-zinc-300 bg-white px-3 py-2 text-sm outline-none focus:border-zinc-900"
-                  value={agentPurpose}
-                  onChange={(event) => setAgentPurpose(event.target.value)}
+          {creationMode === "simple" ? (
+            <div className="mt-6 rounded-lg border border-zinc-200 bg-zinc-50 p-4">
+              <label
+                className="text-sm font-medium text-zinc-900"
+                htmlFor="business-description"
+              >
+                Tell us about your business
+              </label>
+              <textarea
+                id="business-description"
+                className="mt-2 min-h-48 w-full resize-y rounded-md border border-zinc-300 bg-white px-3 py-3 text-sm leading-6 outline-none focus:border-zinc-900"
+                placeholder="I run a dental clinic in Karachi. We are open from 9 AM to 6 PM. I want the receptionist to answer common questions, capture appointment requests, explain our clinic hours, and make sure patient details are confirmed before booking."
+                value={businessDescription}
+                onChange={(event) => setBusinessDescription(event.target.value)}
+              />
+              <div className="mt-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                <p className="text-sm text-zinc-600">
+                  AI setup from this description is coming next. For now, use
+                  Advanced setup to create a live agent.
+                </p>
+                <button
+                  className="inline-flex w-fit cursor-not-allowed rounded-md bg-zinc-300 px-4 py-2 text-sm font-medium text-zinc-600"
+                  disabled
+                  type="button"
                 >
-                  {AGENT_PURPOSE_OPTIONS.map((purpose) => (
-                    <option key={purpose.value} value={purpose.value}>
-                      {purpose.label}
-                    </option>
-                  ))}
-                </select>
+                  AI setup coming next
+                </button>
+              </div>
+            </div>
+          ) : (
+            <form className="mt-6 flex flex-col gap-4" onSubmit={handleSubmit}>
+              <div className="grid gap-4 sm:grid-cols-2">
+                <div className="flex flex-col gap-2">
+                  <label className="text-sm font-medium" htmlFor="business-name">
+                    Business name
+                  </label>
+                  <input
+                    id="business-name"
+                    className="rounded-md border border-zinc-300 px-3 py-2 text-sm outline-none focus:border-zinc-900"
+                    required
+                    type="text"
+                    value={businessName}
+                    onChange={(event) => setBusinessName(event.target.value)}
+                  />
+                </div>
+
+                <div className="flex flex-col gap-2">
+                  <label className="text-sm font-medium" htmlFor="industry">
+                    Industry
+                  </label>
+                  <input
+                    id="industry"
+                    className="rounded-md border border-zinc-300 px-3 py-2 text-sm outline-none focus:border-zinc-900"
+                    placeholder="e.g. salon, dental, restaurant, general"
+                    type="text"
+                    value={industry}
+                    onChange={(event) => setIndustry(event.target.value)}
+                  />
+                </div>
+              </div>
+
+              <div className="grid gap-4 sm:grid-cols-2">
+                <div className="flex flex-col gap-2">
+                  <label className="text-sm font-medium" htmlFor="agent-name">
+                    Agent name
+                  </label>
+                  <input
+                    id="agent-name"
+                    className="rounded-md border border-zinc-300 px-3 py-2 text-sm outline-none focus:border-zinc-900"
+                    placeholder="e.g. Ava"
+                    required
+                    type="text"
+                    value={agentName}
+                    onChange={(event) => setAgentName(event.target.value)}
+                  />
+                </div>
+
+                <div className="flex flex-col gap-2">
+                  <label className="text-sm font-medium" htmlFor="agent-purpose">
+                    Agent purpose
+                  </label>
+                  <select
+                    id="agent-purpose"
+                    className="rounded-md border border-zinc-300 bg-white px-3 py-2 text-sm outline-none focus:border-zinc-900"
+                    value={agentPurpose}
+                    onChange={(event) => setAgentPurpose(event.target.value)}
+                  >
+                    {AGENT_PURPOSE_OPTIONS.map((purpose) => (
+                      <option key={purpose.value} value={purpose.value}>
+                        {purpose.label}
+                      </option>
+                    ))}
+                  </select>
+                </div>
               </div>
 
               <div className="flex flex-col gap-2">
@@ -199,7 +366,7 @@ export default function Home() {
                 </label>
                 <textarea
                   id="business-knowledge"
-                  className="min-h-32 resize-y rounded-md border border-zinc-300 px-3 py-2 text-sm outline-none focus:border-zinc-900"
+                  className="min-h-36 resize-y rounded-md border border-zinc-300 px-3 py-2 text-sm outline-none focus:border-zinc-900"
                   placeholder="Products, services, FAQs, policies, pricing notes, support steps, or anything the agent should know."
                   value={businessKnowledge}
                   onChange={(event) => setBusinessKnowledge(event.target.value)}
@@ -213,16 +380,18 @@ export default function Home() {
               ) : null}
 
               <button
-                className="w-fit rounded-md bg-zinc-950 px-4 py-2 text-sm font-medium text-white disabled:cursor-not-allowed disabled:bg-zinc-400"
+                className="w-fit rounded-md bg-zinc-950 px-4 py-2 text-sm font-medium text-white hover:bg-zinc-800 disabled:cursor-not-allowed disabled:bg-zinc-400"
                 disabled={isSubmitting}
                 type="submit"
               >
                 {isSubmitting ? "Creating..." : "Create Agent"}
               </button>
             </form>
-          </section>
+          )}
+        </section>
 
-          <section className="rounded-lg border border-zinc-200 bg-white p-4">
+        <aside className="flex flex-col gap-6">
+          <section className="rounded-lg border border-zinc-200 bg-white p-5 shadow-sm">
             <h2 className="text-sm font-semibold uppercase tracking-wide text-zinc-500">
               Demo flow
             </h2>
@@ -242,28 +411,46 @@ export default function Home() {
                 </li>
               ))}
             </ol>
-            <p className="mt-4 text-sm text-zinc-500">
+            <p className="mt-4 text-sm leading-6 text-zinc-500">
               Use the browser mic for the inbound call. Booking agents can still
               run the confirmation flow, while other purposes capture follow-up
               details only when useful.
             </p>
           </section>
-        </div>
 
-        <section className="rounded-lg border border-zinc-200 bg-white p-4">
+          <section className="rounded-lg border border-zinc-200 bg-white p-5 shadow-sm">
+            <h2 className="text-sm font-semibold uppercase tracking-wide text-zinc-500">
+              Built for service desks
+            </h2>
+            <div className="mt-4 flex flex-wrap gap-2">
+              {["Clinics", "Salons", "Gyms", "Restaurants", "Legal offices"].map(
+                (industryName) => (
+                  <span
+                    className="rounded-full border border-zinc-200 bg-zinc-50 px-3 py-1 text-xs font-medium text-zinc-600"
+                    key={industryName}
+                  >
+                    {industryName}
+                  </span>
+                ),
+              )}
+            </div>
+          </section>
+        </aside>
+
+        <section className="rounded-lg border border-zinc-200 bg-white p-5 shadow-sm lg:col-span-2">
           <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
             <div>
               <h2 className="text-sm font-semibold uppercase tracking-wide text-zinc-500">
                 Successful workflow snapshot
               </h2>
               <p className="mt-2 max-w-2xl text-sm text-zinc-600">
-                Static demo data for judging: this is what the dashboard shows after
-                an appointment-booking lead is captured and the follow-up
+                Static demo data for judging: this is what the dashboard shows
+                after an appointment-booking lead is captured and the follow-up
                 confirmation call saves a booking plus feedback.
               </p>
             </div>
             <Link
-              className="inline-flex w-fit rounded-md border border-zinc-300 bg-white px-4 py-2 text-sm font-medium"
+              className="inline-flex w-fit rounded-md border border-zinc-300 bg-white px-4 py-2 text-sm font-medium hover:bg-zinc-100"
               href="/dashboard"
             >
               Open dashboard
@@ -310,7 +497,7 @@ export default function Home() {
         </section>
 
         {createdAgent ? (
-          <section className="rounded-lg border border-zinc-200 bg-white p-4">
+          <section className="rounded-lg border border-zinc-200 bg-white p-5 shadow-sm lg:col-span-2">
             <h2 className="text-sm font-semibold uppercase tracking-wide text-zinc-500">
               Agent created
             </h2>
