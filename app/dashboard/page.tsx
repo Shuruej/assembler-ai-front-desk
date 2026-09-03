@@ -41,6 +41,28 @@ type Lead = {
   is_spam: boolean | null;
 };
 
+type LifecycleStageState = "completed" | "active" | "pending" | "failed";
+
+type LifecycleStage = {
+  label: string;
+  state: LifecycleStageState;
+  statusText: string;
+};
+
+const lifecycleStateClasses: Record<LifecycleStageState, string> = {
+  completed: "border-emerald-600 bg-emerald-600 text-white",
+  active: "border-amber-500 bg-amber-50 text-amber-700",
+  pending: "border-zinc-300 bg-white text-zinc-400",
+  failed: "border-red-500 bg-red-50 text-red-700",
+};
+
+const lifecycleLineClasses: Record<LifecycleStageState, string> = {
+  completed: "bg-emerald-200",
+  active: "bg-amber-200",
+  pending: "bg-zinc-200",
+  failed: "bg-red-200",
+};
+
 async function fetchJson<T>(url: string): Promise<T> {
   const response = await fetch(url);
   const data = await response.json();
@@ -148,6 +170,117 @@ function Badge({ value }: { value: string | null }) {
 
 function formatRating(value: number | null): string {
   return value === null ? "Not recorded" : `${value}/5`;
+}
+
+function hasValue(value: string | null): boolean {
+  return Boolean(value && value.trim().length > 0);
+}
+
+function hasNumericRating(value: number | null): boolean {
+  return typeof value === "number" && Number.isFinite(value);
+}
+
+function getLifecycleStages(lead: Lead): LifecycleStage[] {
+  const confirmationStatus = lead.confirmation_status;
+  const confirmationAttempted =
+    confirmationStatus === "confirmed" ||
+    confirmationStatus === "declined" ||
+    confirmationStatus === "no_answer";
+  const bookingFailed =
+    confirmationStatus === "declined" || confirmationStatus === "no_answer";
+
+  return [
+    {
+      label: "Inbound Call",
+      state: hasValue(lead.call_id) ? "completed" : "pending",
+      statusText: hasValue(lead.call_id) ? "Completed" : "Pending",
+    },
+    {
+      label: "Lead Captured",
+      state: "completed",
+      statusText: "Completed",
+    },
+    {
+      label: "Confirmation Call",
+      state:
+        confirmationStatus === "pending"
+          ? "active"
+          : confirmationAttempted
+            ? "completed"
+            : "pending",
+      statusText:
+        confirmationStatus === "pending"
+          ? "In progress"
+          : confirmationAttempted
+            ? "Completed"
+            : "Pending",
+    },
+    {
+      label: "Booking Confirmed",
+      state:
+        confirmationStatus === "confirmed"
+          ? "completed"
+          : bookingFailed
+            ? "failed"
+            : "pending",
+      statusText:
+        confirmationStatus === "confirmed"
+          ? "Completed"
+          : confirmationStatus === "declined"
+            ? "Declined"
+            : confirmationStatus === "no_answer"
+              ? "No answer"
+              : "Pending",
+    },
+    {
+      label: "Feedback",
+      state: hasNumericRating(lead.feedback_rating) ? "completed" : "pending",
+      statusText: hasNumericRating(lead.feedback_rating)
+        ? "Completed"
+        : "Pending",
+    },
+  ];
+}
+
+function LeadLifecycle({ lead }: { lead: Lead }) {
+  const stages = getLifecycleStages(lead);
+
+  return (
+    <div
+      aria-label="Lead lifecycle"
+      className="rounded-md border border-zinc-200 bg-zinc-50 p-3"
+    >
+      <div className="grid gap-3 sm:grid-cols-5">
+        {stages.map((stage, index) => (
+          <div className="relative min-w-0" key={stage.label}>
+            {index > 0 ? (
+              <div
+                aria-hidden="true"
+                className={`absolute left-[-50%] right-[50%] top-3 hidden h-px sm:block ${
+                  lifecycleLineClasses[stages[index - 1].state]
+                }`}
+              />
+            ) : null}
+            <div className="relative flex items-start gap-2 sm:flex-col sm:items-center sm:text-center">
+              <span
+                className={`flex h-6 w-6 shrink-0 items-center justify-center rounded-full border text-xs font-semibold ${lifecycleStateClasses[stage.state]}`}
+              >
+                {index + 1}
+              </span>
+              <span className="min-w-0">
+                <span className="block text-xs font-medium text-zinc-800">
+                  {stage.label}
+                </span>
+                <span className="mt-0.5 block text-xs text-zinc-500">
+                  {stage.statusText}
+                </span>
+              </span>
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
 }
 
 function getDemoHref(assemblyAIAgentId: string): string {
@@ -632,7 +765,7 @@ export default function DashboardPage() {
                           </tr>
                         </thead>
                         <tbody className="divide-y divide-zinc-100">
-                          {leads.map((lead) => (
+                          {leads.flatMap((lead) => [
                             <tr key={lead.id} className="align-top">
                               <td className="py-3 pr-4 text-zinc-700">
                                 {displayValue(lead.customer_name)}
@@ -691,8 +824,15 @@ export default function DashboardPage() {
                                   </Link>
                                 ) : null}
                               </td>
-                            </tr>
-                          ))}
+                            </tr>,
+                            lead.is_spam !== true ? (
+                              <tr key={`${lead.id}-lifecycle`}>
+                                <td className="pb-4 pr-4 pt-0" colSpan={13}>
+                                  <LeadLifecycle lead={lead} />
+                                </td>
+                              </tr>
+                            ) : null,
+                          ])}
                         </tbody>
                       </table>
                     )}
