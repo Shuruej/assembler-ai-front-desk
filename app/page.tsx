@@ -302,7 +302,8 @@ export default function Home() {
                 Rating: 5/5
               </p>
               <p className="mt-2 text-xs text-zinc-600">
-                "Fast and clear. I liked that the agent repeated everything back."
+                &quot;Fast and clear. I liked that the agent repeated everything
+                back.&quot;
               </p>
             </div>
           </div>

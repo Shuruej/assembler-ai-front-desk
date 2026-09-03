@@ -63,6 +63,13 @@ export async function POST(
     );
   }
 
+  if (feedbackRating === null) {
+    return Response.json(
+      { error: "feedback_rating is required." },
+      { status: 400 },
+    );
+  }
+
   const supabase = createSupabaseServiceRoleClient();
   const { data: lead, error } = await supabase
     .from("leads")
@@ -75,7 +82,10 @@ export async function POST(
     .single();
 
   if (error || !lead) {
-    return Response.json({ error: error?.message ?? "Lead not found." }, { status: error ? 500 : 404 });
+    return Response.json(
+      { error: error?.message ?? "Lead not found." },
+      { status: error ? 500 : 404 },
+    );
   }
 
   return Response.json(lead);

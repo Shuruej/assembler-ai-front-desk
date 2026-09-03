@@ -203,9 +203,6 @@ export default function DashboardPage() {
 
   useEffect(() => {
     if (!selectedAgentId) {
-      setCalls([]);
-      setLeads([]);
-      setExpandedCallIds(new Set());
       return;
     }
 

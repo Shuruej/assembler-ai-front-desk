@@ -72,6 +72,14 @@ export async function POST(
     );
   }
 
+  if (!confirmedDate) {
+    return Response.json({ error: "confirmed_date is required." }, { status: 400 });
+  }
+
+  if (!confirmedTime) {
+    return Response.json({ error: "confirmed_time is required." }, { status: 400 });
+  }
+
   const supabase = createSupabaseServiceRoleClient();
   const { data: existingLead, error: lookupError } = await supabase
     .from("leads")

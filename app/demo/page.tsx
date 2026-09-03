@@ -37,6 +37,8 @@ type VoiceAgentMessage = {
   arguments?: Record<string, unknown>;
 };
 
+const CALL_INACTIVITY_TIMEOUT_MS = 20_000;
+
 function arrayBufferToBase64(buffer: ArrayBuffer): string {
   const bytes = new Uint8Array(buffer);
   let binary = "";
@@ -83,17 +85,12 @@ function DemoPageContent() {
   const silenceRef = useRef<GainNode | null>(null);
   const playbackTimeRef = useRef(0);
   const readyRef = useRef(false);
+  const inactivityTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const dbCallIdRef = useRef<string | null>(null);
   const transcriptTextRef = useRef<string>("");
   const pendingToolResultsRef = useRef<{ call_id: string; result: string }[]>([]);
   const hasEndedRef = useRef(false);
-
-  useEffect(() => {
-    if (hasQueryAgentId) {
-      setAgentId(queryAgentId);
-    }
-  }, [hasQueryAgentId, queryAgentId]);
 
   function addTranscript(entry: TranscriptEntry) {
     setTranscript((current) => [...current, entry]);
@@ -158,7 +155,25 @@ function DemoPageContent() {
     }
   }
 
-  function cleanup() {
+  function clearInactivityTimer() {
+    if (inactivityTimerRef.current) {
+      clearTimeout(inactivityTimerRef.current);
+      inactivityTimerRef.current = null;
+    }
+  }
+
+  function resetInactivityTimer() {
+    clearInactivityTimer();
+
+    if (!readyRef.current) return;
+
+    inactivityTimerRef.current = setTimeout(() => {
+      endCallForInactivity();
+    }, CALL_INACTIVITY_TIMEOUT_MS);
+  }
+
+  function cleanup(nextStatus = "Idle") {
+    clearInactivityTimer();
     readyRef.current = false;
     workletRef.current?.disconnect();
     silenceRef.current?.disconnect();
@@ -175,7 +190,32 @@ function DemoPageContent() {
     playbackTimeRef.current = 0;
     pendingToolResultsRef.current = [];
     setIsCalling(false);
-    setStatus("Idle");
+    setStatus(nextStatus);
+  }
+
+  function endCallForInactivity() {
+    clearInactivityTimer();
+
+    addTranscript({
+      id: `system-inactivity-${Date.now()}`,
+      role: "system",
+      text: "No voice activity for 20 seconds. Call ended automatically.",
+    });
+    setStatus("No voice activity for 20 seconds. Ending call...");
+
+    const ws = wsRef.current;
+
+    if (ws?.readyState === WebSocket.OPEN) {
+      ws.send(JSON.stringify({ type: "session.end" }));
+      setTimeout(() => {
+        if (wsRef.current === ws) {
+          ws.close();
+          void endCallOnServer().finally(() => cleanup());
+        }
+      }, 1500);
+    } else {
+      void endCallOnServer().finally(() => cleanup());
+    }
   }
 
   async function handleToolCall(message: VoiceAgentMessage) {
@@ -348,6 +388,7 @@ function DemoPageContent() {
 
         if (message.type === "session.ready") {
           readyRef.current = true;
+          resetInactivityTimer();
           setStatus(`Connected: ${message.session_id}`);
           addTranscript({
             id: `system-${Date.now()}`,
@@ -355,8 +396,10 @@ function DemoPageContent() {
             text: "Session ready. Start speaking.",
           });
         } else if (message.type === "reply.audio" && message.data) {
+          resetInactivityTimer();
           playAudioChunk(message.data);
         } else if (message.type === "transcript.user.delta") {
+          resetInactivityTimer();
           upsertTranscript({
             id: message.item_id ?? "user-partial",
             role: "user",
@@ -364,6 +407,7 @@ function DemoPageContent() {
             partial: true,
           });
         } else if (message.type === "transcript.user") {
+          resetInactivityTimer();
           upsertTranscript({
             id: message.item_id ?? `user-${Date.now()}`,
             role: "user",
@@ -372,6 +416,7 @@ function DemoPageContent() {
           });
           appendTranscriptText("user", message.text ?? "");
         } else if (message.type === "transcript.agent.delta") {
+          resetInactivityTimer();
           const id = message.item_id ?? message.reply_id ?? "agent-partial";
           setTranscript((current) => {
             const index = current.findIndex((item) => item.id === id);
@@ -389,6 +434,7 @@ function DemoPageContent() {
             );
           });
         } else if (message.type === "transcript.agent") {
+          resetInactivityTimer();
           upsertTranscript({
             id: message.item_id ?? message.reply_id ?? `agent-${Date.now()}`,
             role: "agent",
@@ -397,8 +443,10 @@ function DemoPageContent() {
           });
           appendTranscriptText("agent", message.text ?? "");
         } else if (message.type === "tool.call") {
+          resetInactivityTimer();
           void handleToolCall(message);
         } else if (message.type === "reply.done") {
+          resetInactivityTimer();
           if (message.status === "interrupted") {
             playbackTimeRef.current = audioContext.currentTime;
           }
@@ -456,7 +504,16 @@ function DemoPageContent() {
 
     return () => {
       window.removeEventListener("pagehide", endOnPageHide);
-      cleanup();
+      if (inactivityTimerRef.current) {
+        clearTimeout(inactivityTimerRef.current);
+        inactivityTimerRef.current = null;
+      }
+      readyRef.current = false;
+      workletRef.current?.disconnect();
+      silenceRef.current?.disconnect();
+      sourceRef.current?.disconnect();
+      streamRef.current?.getTracks().forEach((track) => track.stop());
+      void audioContextRef.current?.close();
     };
   }, []);
 

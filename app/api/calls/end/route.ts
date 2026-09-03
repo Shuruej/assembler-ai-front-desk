@@ -36,8 +36,11 @@ export async function POST(request: Request) {
     return Response.json({ error: "call_id is required." }, { status: 400 });
   }
 
-  if (typeof body.transcript !== "string") {
-    return Response.json({ error: "transcript is required." }, { status: 400 });
+  if (body.transcript !== undefined && typeof body.transcript !== "string") {
+    return Response.json(
+      { error: "transcript must be a string when provided." },
+      { status: 400 },
+    );
   }
 
   let summary: string | null;
@@ -83,7 +86,7 @@ export async function POST(request: Request) {
   } = {
     ended_at: endedAt.toISOString(),
     duration_seconds: durationSeconds,
-    transcript: body.transcript,
+    transcript: body.transcript?.trim() ?? "",
     status: "completed",
   };
 
