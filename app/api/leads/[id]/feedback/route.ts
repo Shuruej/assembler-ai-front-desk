@@ -1,4 +1,5 @@
 import { createSupabaseServiceRoleClient } from "@/lib/supabase/server";
+import { normalizeAgentFollowUpPreferences } from "@/lib/follow-up-preferences";
 
 type FeedbackRequestBody = {
   feedback_rating?: unknown;
@@ -71,6 +72,19 @@ export async function POST(
   }
 
   const supabase = createSupabaseServiceRoleClient();
+  const { data: contextLead, error: contextError } = await supabase
+    .from("leads")
+    .select("calls (agents (*))")
+    .eq("id", id)
+    .single();
+  const call = Array.isArray(contextLead?.calls) ? contextLead.calls[0] : contextLead?.calls;
+  const agent = Array.isArray(call?.agents) ? call.agents[0] : call?.agents;
+  if (contextError || !agent) {
+    return Response.json({ error: "Lead context not found." }, { status: 404 });
+  }
+  if (!normalizeAgentFollowUpPreferences(agent).feedback_enabled) {
+    return Response.json({ status: "disabled", message: "Feedback collection is disabled for this agent." });
+  }
   const { data: lead, error } = await supabase
     .from("leads")
     .update({

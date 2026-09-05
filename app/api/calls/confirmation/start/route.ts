@@ -1,4 +1,5 @@
 import { createSupabaseServiceRoleClient } from "@/lib/supabase/server";
+import { FOLLOW_UP_DISABLED_MESSAGE, normalizeAgentFollowUpPreferences } from "@/lib/follow-up-preferences";
 
 type StartConfirmationCallRequestBody = {
   lead_id?: unknown;
@@ -25,7 +26,7 @@ export async function POST(request: Request) {
   const leadId = body.lead_id.trim();
   const { data: lead, error: leadError } = await supabase
     .from("leads")
-    .select("calls (agent_id)")
+    .select("calls (agent_id, agents (*))")
     .eq("id", leadId)
     .single();
 
@@ -36,6 +37,15 @@ export async function POST(request: Request) {
       { error: "No lead call found for the provided lead_id." },
       { status: 404 },
     );
+  }
+
+  const agent = Array.isArray(call.agents) ? call.agents[0] : call.agents;
+  if (!agent) {
+    return Response.json({ error: "Agent not found." }, { status: 404 });
+  }
+  const preferences = normalizeAgentFollowUpPreferences(agent);
+  if (!preferences.confirmation_call_enabled) {
+    return Response.json({ status: "disabled", message: FOLLOW_UP_DISABLED_MESSAGE, ...preferences });
   }
 
   const { data: confirmationCall, error: callError } = await supabase
@@ -53,5 +63,5 @@ export async function POST(request: Request) {
     return Response.json({ error: callError.message }, { status: 500 });
   }
 
-  return Response.json(confirmationCall, { status: 201 });
+  return Response.json({ ...confirmationCall, ...preferences }, { status: 201 });
 }

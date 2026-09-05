@@ -2,8 +2,11 @@
 
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
+import type { AgentFollowUpPreferences } from "@/lib/follow-up-preferences";
 
 type Agent = {
+  confirmation_call_enabled?: boolean | null;
+  feedback_enabled?: boolean | null;
   id: string;
   business_name: string | null;
   industry: string | null;
@@ -41,7 +44,7 @@ type Lead = {
   is_spam: boolean | null;
 };
 
-type LifecycleStageState = "completed" | "active" | "pending" | "failed";
+type LifecycleStageState = "completed" | "active" | "pending" | "failed" | "off";
 
 type LifecycleStage = {
   label: string;
@@ -50,6 +53,7 @@ type LifecycleStage = {
 };
 
 const lifecycleStateClasses: Record<LifecycleStageState, string> = {
+  off: "border-zinc-200 bg-zinc-100 text-zinc-500",
   completed: "border-emerald-600 bg-emerald-600 text-white",
   active: "border-amber-500 bg-amber-50 text-amber-700",
   pending: "border-zinc-300 bg-white text-zinc-400",
@@ -57,6 +61,7 @@ const lifecycleStateClasses: Record<LifecycleStageState, string> = {
 };
 
 const lifecycleLineClasses: Record<LifecycleStageState, string> = {
+  off: "bg-zinc-200",
   completed: "bg-emerald-200",
   active: "bg-amber-200",
   pending: "bg-zinc-200",
@@ -180,7 +185,45 @@ function hasNumericRating(value: number | null): boolean {
   return typeof value === "number" && Number.isFinite(value);
 }
 
-function getLifecycleStages(lead: Lead): LifecycleStage[] {
+function normalizeDashboardFollowUpPreferences(
+  value: Pick<Agent, "confirmation_call_enabled" | "feedback_enabled"> | null,
+): AgentFollowUpPreferences {
+  const confirmation = value?.confirmation_call_enabled !== false;
+
+  return {
+    confirmation_call_enabled: confirmation,
+    feedback_enabled: confirmation && value?.feedback_enabled !== false,
+  };
+}
+
+function getLifecycleStages(lead: Lead, preferences: AgentFollowUpPreferences): LifecycleStage[] {
+  if (!preferences.confirmation_call_enabled) {
+    return [
+      {
+        label: "Inbound Call",
+        state: hasValue(lead.call_id) ? "completed" : "pending",
+        statusText: hasValue(lead.call_id) ? "Completed" : "Pending",
+      },
+      {
+        label: "Lead Captured",
+        state: "completed",
+        statusText: "Completed",
+      },
+      {
+        label: "Booking Confirmed",
+        state: hasValue(lead.booking_id) ? "completed" : "off",
+        statusText: hasValue(lead.booking_id) ? "Completed" : "Not applicable",
+      },
+      {
+        label: "Feedback",
+        state: hasNumericRating(lead.feedback_rating) ? "completed" : "off",
+        statusText: hasNumericRating(lead.feedback_rating)
+          ? "Completed"
+          : "Not applicable",
+      },
+    ];
+  }
+
   const confirmationStatus = lead.confirmation_status;
   const confirmationAttempted =
     confirmationStatus === "confirmed" ||
@@ -189,7 +232,7 @@ function getLifecycleStages(lead: Lead): LifecycleStage[] {
   const bookingFailed =
     confirmationStatus === "declined" || confirmationStatus === "no_answer";
 
-  return [
+  const stages: LifecycleStage[] = [
     {
       label: "Inbound Call",
       state: hasValue(lead.call_id) ? "completed" : "pending",
@@ -240,10 +283,17 @@ function getLifecycleStages(lead: Lead): LifecycleStage[] {
         : "Pending",
     },
   ];
+  return stages.map((stage) => {
+    if (stage.state === "completed") return stage;
+    if (stage.label === "Feedback" && !preferences.feedback_enabled) {
+      return { ...stage, state: "off", statusText: "Not applicable" };
+    }
+    return stage;
+  });
 }
 
-function LeadLifecycle({ lead }: { lead: Lead }) {
-  const stages = getLifecycleStages(lead);
+function LeadLifecycle({ lead, preferences }: { lead: Lead; preferences: AgentFollowUpPreferences }) {
+  const stages = getLifecycleStages(lead, preferences);
 
   return (
     <div
@@ -304,6 +354,7 @@ export default function DashboardPage() {
     () => agents.find((agent) => agent.id === selectedAgentId) ?? null,
     [agents, selectedAgentId],
   );
+  const followUpPreferences = normalizeDashboardFollowUpPreferences(selectedAgent);
 
   const analyticsStats = useMemo(() => {
     const validLeads = leads.filter((lead) => lead.is_spam !== true);
@@ -331,22 +382,37 @@ export default function DashboardPage() {
         suffix: null,
         supportingText: "Valid customer inquiries",
       },
-      {
-        label: "Confirmed Bookings",
-        value: validLeads
-          .filter((lead) => lead.confirmation_status === "confirmed")
-          .length.toString(),
-        suffix: null,
-        supportingText: "Successfully confirmed",
-      },
+      followUpPreferences.confirmation_call_enabled
+        ? {
+            label: "Confirmed Bookings",
+            value: validLeads
+              .filter((lead) => lead.confirmation_status === "confirmed")
+              .length.toString(),
+            suffix: null,
+            supportingText: "Successfully confirmed",
+          }
+        : {
+            label: "Follow-up",
+            value: "Off",
+            suffix: null,
+            supportingText: "Confirmation disabled",
+          },
       {
         label: "Average Rating",
-        value: averageRating === null ? "\u2014" : averageRating.toFixed(1),
-        suffix: averageRating === null ? null : "/ 5",
-        supportingText: "Customer feedback",
+        value: !followUpPreferences.feedback_enabled
+          ? "Off"
+          : averageRating === null
+            ? "\u2014"
+            : averageRating.toFixed(1),
+        suffix: !followUpPreferences.feedback_enabled || averageRating === null
+          ? null
+          : "/ 5",
+        supportingText: followUpPreferences.feedback_enabled
+          ? "Customer feedback"
+          : "Feedback disabled",
       },
     ];
-  }, [calls, leads]);
+  }, [calls, leads, followUpPreferences.confirmation_call_enabled, followUpPreferences.feedback_enabled]);
 
   useEffect(() => {
     let ignore = false;
@@ -391,14 +457,16 @@ export default function DashboardPage() {
       setExpandedCallIds(new Set());
 
       try {
-        const [callsData, leadsData] = await Promise.all([
+        const [callsData, leadsData, agentsData] = await Promise.all([
           fetchJson<Call[]>(`/api/agents/${selectedAgentId}/calls`),
           fetchJson<Lead[]>(`/api/agents/${selectedAgentId}/leads`),
+          fetchJson<Agent[]>("/api/agents"),
         ]);
 
         if (!ignore) {
           setCalls(callsData);
           setLeads(leadsData);
+          setAgents(agentsData);
         }
       } catch (err) {
         if (!ignore) {
@@ -783,19 +851,30 @@ export default function DashboardPage() {
                                 {displayValue(lead.status)}
                               </td>
                               <td className="py-3 pr-4 text-zinc-700">
-                                <Badge value={lead.confirmation_status} />
+                                <Badge value={followUpPreferences.confirmation_call_enabled
+                                  ? lead.confirmation_status : "follow_up_off"} />
                               </td>
                               <td className="py-3 pr-4 font-mono text-xs text-zinc-700">
-                                {displayValue(lead.booking_id)}
+                                {!followUpPreferences.confirmation_call_enabled &&
+                                !hasValue(lead.booking_id)
+                                  ? "Not applicable"
+                                  : displayValue(lead.booking_id)}
                               </td>
                               <td className="py-3 pr-4 text-zinc-700">
-                                {formatPlainDate(lead.confirmed_date)}
+                                {!followUpPreferences.confirmation_call_enabled &&
+                                !hasValue(lead.confirmed_date)
+                                  ? "Not applicable"
+                                  : formatPlainDate(lead.confirmed_date)}
                               </td>
                               <td className="py-3 pr-4 text-zinc-700">
-                                {displayValue(lead.confirmed_time)}
+                                {!followUpPreferences.confirmation_call_enabled &&
+                                !hasValue(lead.confirmed_time)
+                                  ? "Not applicable"
+                                  : displayValue(lead.confirmed_time)}
                               </td>
                               <td className="py-3 pr-4 text-zinc-700">
-                                {formatRating(lead.feedback_rating)}
+                                {!followUpPreferences.feedback_enabled && !hasNumericRating(lead.feedback_rating)
+                                  ? "Not applicable" : formatRating(lead.feedback_rating)}
                               </td>
                               <td className="max-w-60 py-3 pr-4 text-zinc-700">
                                 <p className="line-clamp-3">
@@ -808,7 +887,9 @@ export default function DashboardPage() {
                                 </p>
                               </td>
                               <td className="py-3">
-                                {lead.confirmation_status === "pending" ? (
+                                {!followUpPreferences.confirmation_call_enabled ? (
+                                  <span className="text-xs text-zinc-500">Follow-up off</span>
+                                ) : lead.confirmation_status === "pending" ? (
                                   <Link
                                     className="inline-flex rounded-md border border-zinc-300 bg-white px-3 py-1.5 text-xs font-medium text-zinc-700 hover:bg-zinc-100"
                                     href={`/confirm/${lead.id}`}
@@ -828,7 +909,7 @@ export default function DashboardPage() {
                             lead.is_spam !== true ? (
                               <tr key={`${lead.id}-lifecycle`}>
                                 <td className="pb-4 pr-4 pt-0" colSpan={13}>
-                                  <LeadLifecycle lead={lead} />
+                                  <LeadLifecycle lead={lead} preferences={followUpPreferences} />
                                 </td>
                               </tr>
                             ) : null,

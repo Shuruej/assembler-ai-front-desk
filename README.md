@@ -74,6 +74,14 @@ Open `http://localhost:3000`.
 
 Apply the Supabase migrations in `supabase/migrations` to your Supabase project before running the full workflow.
 
+The follow-up preferences feature requires `20260906120000_add_agent_follow_up_preferences.sql`.
+Apply it before deploying the updated agent-creation API. It adds
+`agents.confirmation_call_enabled` and `agents.feedback_enabled`, both defaulting
+to true for existing agents. A database trigger normalizes feedback to false
+when confirmation is off. Simple setup saves the selected values; Advanced
+setup defaults to both enabled. These preferences govern the confirmation
+flow only and do not change inbound voice behavior.
+
 ## Environment Variables
 
 Create `.env.local` with:

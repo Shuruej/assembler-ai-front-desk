@@ -1,5 +1,9 @@
 import { createAssemblyAIAgent } from "@/lib/assemblyai/client";
 import { createSupabaseServiceRoleClient } from "@/lib/supabase/server";
+import {
+  normalizeAgentFollowUpPreferences,
+  normalizeFollowUpPreferences,
+} from "@/lib/follow-up-preferences";
 
 type CreateAgentRequestBody = {
   business_name?: unknown;
@@ -7,6 +11,12 @@ type CreateAgentRequestBody = {
   name?: unknown;
   agent_purpose?: unknown;
   business_knowledge?: unknown;
+  business_hours_start?: unknown;
+  business_hours_end?: unknown;
+  timezone?: unknown;
+  follow_up_preferences?: unknown;
+  confirmation_call_enabled?: boolean | null;
+  feedback_enabled?: boolean | null;
 };
 
 const VALID_AGENT_PURPOSES = new Set([
@@ -87,6 +97,9 @@ export async function POST(request: Request) {
   let industry: string | null;
   let agentPurpose: string;
   let businessKnowledge: string | null;
+  let businessHoursStart: string | null;
+  let businessHoursEnd: string | null;
+  let timezone: string | null;
 
   try {
     industry = normalizeOptionalString(body.industry, "industry");
@@ -95,6 +108,15 @@ export async function POST(request: Request) {
       body.business_knowledge,
       "business_knowledge",
     );
+    businessHoursStart = normalizeOptionalString(
+      body.business_hours_start,
+      "business_hours_start",
+    );
+    businessHoursEnd = normalizeOptionalString(
+      body.business_hours_end,
+      "business_hours_end",
+    );
+    timezone = normalizeOptionalString(body.timezone, "timezone");
   } catch (error) {
     return Response.json(
       { error: error instanceof Error ? error.message : "Invalid request body." },
@@ -104,6 +126,22 @@ export async function POST(request: Request) {
 
   const businessName = body.business_name.trim();
   const name = body.name.trim();
+  for (const key of ["confirmation_call_enabled", "feedback_enabled"] as const) {
+    if (body[key] != null && typeof body[key] !== "boolean") {
+      return Response.json({ error: `${key} must be a boolean.` }, { status: 400 });
+    }
+  }
+  const uiPreferences = normalizeFollowUpPreferences(body.follow_up_preferences);
+  const preferences = normalizeAgentFollowUpPreferences({
+    confirmation_call_enabled:
+      typeof body.confirmation_call_enabled === "boolean"
+        ? body.confirmation_call_enabled
+        : uiPreferences.confirm_appointments_by_phone,
+    feedback_enabled:
+      typeof body.feedback_enabled === "boolean"
+        ? body.feedback_enabled
+        : uiPreferences.collect_feedback_after_confirmation,
+  });
 
   try {
     const assemblyAIAgent = await createAssemblyAIAgent({
@@ -112,6 +150,11 @@ export async function POST(request: Request) {
       name,
       agentPurpose,
       businessKnowledge,
+      businessHoursStart,
+      businessHoursEnd,
+      timezone,
+      confirmationCallEnabled: preferences.confirmation_call_enabled,
+      feedbackEnabled: preferences.feedback_enabled,
     });
 
     const supabase = createSupabaseServiceRoleClient();
@@ -123,7 +166,11 @@ export async function POST(request: Request) {
         name,
         agent_purpose: agentPurpose,
         business_knowledge: businessKnowledge,
+        business_hours_start: businessHoursStart,
+        business_hours_end: businessHoursEnd,
+        timezone,
         assemblyai_agent_id: assemblyAIAgent.id,
+        ...preferences,
       })
       .select()
       .single();

@@ -1,4 +1,5 @@
 import { createSupabaseServiceRoleClient } from "@/lib/supabase/server";
+import { normalizeAgentFollowUpPreferences } from "@/lib/follow-up-preferences";
 
 export async function GET(
   _request: Request,
@@ -15,9 +16,7 @@ export async function GET(
       calls (
         *,
         agents (
-          business_name,
-          industry,
-          name
+          *
         )
       )
     `,
@@ -56,5 +55,6 @@ export async function GET(
     business_name: agent.business_name,
     industry: agent.industry,
     agent_name: agent.name,
+    ...normalizeAgentFollowUpPreferences(agent),
   });
 }
