@@ -1,6 +1,7 @@
 "use client";
 
-import { use, useCallback, useEffect, useRef, useState } from "react";
+import { use, useEffect, useRef, useState } from "react";
+import { FOLLOW_UP_DISABLED_MESSAGE, normalizeAgentFollowUpPreferences } from "@/lib/follow-up-preferences";
 
 type TranscriptEntry = {
   id: string;
@@ -27,6 +28,8 @@ type Lead = {
 };
 
 type ConfirmationContext = {
+  confirmation_call_enabled?: boolean;
+  feedback_enabled?: boolean;
   lead: Lead;
   business_name: string | null;
   industry: string | null;
@@ -39,6 +42,10 @@ type VoiceTokenResponse = {
 };
 
 type CallStartResponse = {
+  status?: string;
+  message?: string;
+  confirmation_call_enabled?: boolean;
+  feedback_enabled?: boolean;
   id?: string;
   error?: string;
 };
@@ -59,6 +66,42 @@ type VoiceAgentMessage = {
 };
 
 const CALL_INACTIVITY_TIMEOUT_MS = 20_000;
+const AUTO_END_AFTER_REPLY_BUFFER_MS = 350;
+
+function normalizeIntentText(text: string) {
+  return text
+    .toLowerCase()
+    .replace(/[’`]/g, "'")
+    .replace(/[^a-z0-9'\s]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function hasConversationEndingIntent(text: string) {
+  const normalized = normalizeIntentText(text);
+
+  if (!normalized) return false;
+
+  return (
+    /(?:^|\s)(?:that'?s|that is)\s+all(?:\s+for\s+(?:today|now))?$/.test(
+      normalized,
+    ) ||
+    /(?:^|\s)(?:goodbye|bye bye|bye)$/.test(normalized) ||
+    /(?:^|\s)test\s+is\s+complete$/.test(normalized)
+  );
+}
+
+function hasAgentClosingReply(text: string) {
+  const normalized = normalizeIntentText(text);
+
+  if (!normalized) return false;
+
+  return (
+    /(?:^|\s)(?:goodbye|bye bye|bye)$/.test(normalized) ||
+    /\bhave\s+a\s+(?:wonderful|great|good|nice)\s+day$/.test(normalized) ||
+    /\bthank\s+you\s+for\s+calling$/.test(normalized)
+  );
+}
 
 function arrayBufferToBase64(buffer: ArrayBuffer): string {
   const bytes = new Uint8Array(buffer);
@@ -168,6 +211,7 @@ function StatusBadge({ value }: { value: string | null }) {
 }
 
 function buildConfirmationPrompt(context: ConfirmationContext): string {
+  const { feedback_enabled: feedbackEnabled } = normalizeAgentFollowUpPreferences(context);
   const businessName = displayValue(context.business_name);
   const industry = displayValue(context.industry);
   const customerName = displayValue(context.lead.customer_name);
@@ -182,9 +226,14 @@ function buildConfirmationPrompt(context: ConfirmationContext): string {
     "You must complete this full call flow in order. Step 1: confirm the appointment details, including final date and time, with explicit yes/correct confirmation before calling assign_booking.",
     "Step 2: once the final appointment date and time are agreed, call the assign_booking tool with confirmed_date in YYYY-MM-DD format, confirmed_time as a clear human-readable time, and optional notes.",
     "Step 3: immediately after assign_booking's result comes back, verbally acknowledge success in one short sentence, such as: Great, you're all booked in. Do not pause silently after the booking tool result.",
+    ...(feedbackEnabled ? [
     "Step 4: then ask a brief satisfaction question about the initial booking experience, asking for a rating from 1 to 5.",
     "Step 5: once the caller gives a rating, call the capture_feedback tool with that rating and any comment they gave.",
-    "Step 6: after capture_feedback's result comes back, thank them, mention that a review link will be sent, and say goodbye. Always end with a clear verbal closing statement; never leave the conversation hanging silently after any tool call.",
+    "Step 6: after capture_feedback succeeds, thank the caller for their feedback and close naturally with Goodbye. Always speak this closing before the call ends.",
+    ] : [
+      "Step 4: immediately after acknowledging the successful booking, thank the customer and say Goodbye. Do not ask for a rating or feedback and never call capture_feedback. Feedback collection is disabled. Always speak the closing before the call ends.",
+    ]),
+    "Never invent or promise review links, SMS messages, emails, future follow-ups, or notifications unless explicitly supported by the current product data and available tools. This confirmation flow only saves bookings and feedback; it has no review-link or outbound messaging feature. After feedback, simply thank the caller and say goodbye without promising anything else.",
     "After every tool call, always speak a short natural follow-up in the same turn -- never end your turn in silence after a tool result.",
     "Mandatory confirmation protocol: never call assign_booking or capture_feedback until you have read the relevant details back to the caller and the caller has explicitly confirmed with an affirmative response such as yes, correct, or that's right. This confirmation step is required even if the caller gave every detail in a single turn. When reading a phone number, date, or time back, speak digits slowly and clearly, grouped in short pairs or triples with pauses. If the caller corrects any detail, repeat the corrected version back once more and wait for explicit confirmation again before calling any tool.",
     "Keep responses concise, natural, and suitable for a live voice conversation. Do not invent business-specific details that have not been provided.",
@@ -212,38 +261,18 @@ export default function ConfirmLeadPage({
   const playbackTimeRef = useRef(0);
   const readyRef = useRef(false);
   const inactivityTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const autoEndTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const dbCallIdRef = useRef<string | null>(null);
   const transcriptTextRef = useRef<string>("");
   const pendingToolResultsRef = useRef<{ call_id: string; result: string }[]>([]);
+  const toolResultWindowOpenRef = useRef(false);
+  const handledToolCallsRef = useRef(new Set<string>());
+  const toolTurnVersionRef = useRef(0);
   const hasEndedRef = useRef(false);
-
-  const loadConfirmationContext = useCallback(
-    async ({
-      loadingStatus = "Loading lead...",
-      readyStatus = "Ready",
-    }: {
-      loadingStatus?: string | null;
-      readyStatus?: string;
-    } = {}) => {
-      if (loadingStatus) {
-        setStatus(loadingStatus);
-      }
-      setError(null);
-
-      try {
-        const data = await fetchJson<ConfirmationContext>(
-          `/api/leads/${leadId}/confirmation-context`,
-        );
-        setContext(data);
-        setStatus(readyStatus);
-      } catch (err) {
-        setError(err instanceof Error ? err.message : "Lead not found.");
-        setStatus("Unable to load lead");
-      }
-    },
-    [leadId],
-  );
+  const stopRequestedRef = useRef(false);
+  const shouldAutoEndAfterReplyRef = useRef(false);
+  const feedbackEnabledRef = useRef(true);
 
   useEffect(() => {
     let ignore = false;
@@ -255,7 +284,8 @@ export default function ConfirmLeadPage({
         );
         if (!ignore) {
           setContext(data);
-          setStatus("Ready");
+          setStatus(normalizeAgentFollowUpPreferences(data).confirmation_call_enabled
+            ? "Ready" : FOLLOW_UP_DISABLED_MESSAGE);
         }
       } catch (err) {
         if (!ignore) {
@@ -342,6 +372,13 @@ export default function ConfirmLeadPage({
     }
   }
 
+  function clearAutoEndTimer() {
+    if (autoEndTimerRef.current) {
+      clearTimeout(autoEndTimerRef.current);
+      autoEndTimerRef.current = null;
+    }
+  }
+
   function resetInactivityTimer() {
     clearInactivityTimer();
 
@@ -352,8 +389,42 @@ export default function ConfirmLeadPage({
     }, CALL_INACTIVITY_TIMEOUT_MS);
   }
 
+  function requestStopCall(nextStatus = "Ending call...") {
+    if (stopRequestedRef.current) return;
+    stopRequestedRef.current = true;
+    clearInactivityTimer();
+    clearAutoEndTimer();
+    setStatus(nextStatus);
+
+    const ws = wsRef.current;
+
+    if (ws?.readyState === WebSocket.OPEN) {
+      ws.send(JSON.stringify({ type: "session.end" }));
+    } else {
+      void endCallOnServer().finally(cleanup);
+    }
+  }
+
+  function scheduleAutoEndAfterReply() {
+    if (!shouldAutoEndAfterReplyRef.current) return;
+
+    shouldAutoEndAfterReplyRef.current = false;
+    clearAutoEndTimer();
+
+    const audioContext = audioContextRef.current;
+    const remainingPlaybackMs = audioContext
+      ? Math.max(0, playbackTimeRef.current - audioContext.currentTime) * 1000
+      : 0;
+
+    autoEndTimerRef.current = setTimeout(() => {
+      autoEndTimerRef.current = null;
+      requestStopCall("Ending call after goodbye...");
+    }, remainingPlaybackMs + AUTO_END_AFTER_REPLY_BUFFER_MS);
+  }
+
   function cleanup(nextStatus = "Ready") {
     clearInactivityTimer();
+    clearAutoEndTimer();
     readyRef.current = false;
     workletRef.current?.disconnect();
     silenceRef.current?.disconnect();
@@ -369,24 +440,27 @@ export default function ConfirmLeadPage({
     silenceRef.current = null;
     playbackTimeRef.current = 0;
     pendingToolResultsRef.current = [];
+    toolResultWindowOpenRef.current = false;
+    handledToolCallsRef.current.clear();
+    toolTurnVersionRef.current += 1;
+    stopRequestedRef.current = false;
+    shouldAutoEndAfterReplyRef.current = false;
     setIsCalling(false);
     setStatus(nextStatus);
   }
 
   function endCallForInactivity() {
-    clearInactivityTimer();
+    if (stopRequestedRef.current) return;
 
     addTranscript({
       id: `system-inactivity-${Date.now()}`,
       role: "system",
       text: "No voice activity for 20 seconds. Call ended automatically.",
     });
-    setStatus("No voice activity for 20 seconds. Ending call...");
-
     const ws = wsRef.current;
+    requestStopCall("No voice activity for 20 seconds. Ending call...");
 
     if (ws?.readyState === WebSocket.OPEN) {
-      ws.send(JSON.stringify({ type: "session.end" }));
       setTimeout(() => {
         if (wsRef.current === ws) {
           ws.close();
@@ -399,9 +473,16 @@ export default function ConfirmLeadPage({
   }
 
   async function handleToolCall(message: VoiceAgentMessage) {
+    if (message.name === "capture_feedback" && !feedbackEnabledRef.current) return;
     if (message.name !== "assign_booking" && message.name !== "capture_feedback") {
       return;
     }
+
+    const ws = wsRef.current;
+    if (!message.call_id || !ws || stopRequestedRef.current) return;
+    if (handledToolCallsRef.current.has(message.call_id)) return;
+    handledToolCallsRef.current.add(message.call_id);
+    const toolTurnVersion = toolTurnVersionRef.current;
 
     const args = (message.arguments ?? {}) as Record<string, unknown>;
     let resultPayload: Record<string, unknown>;
@@ -428,10 +509,10 @@ export default function ConfirmLeadPage({
           role: "system",
           text: `Booking saved${data.booking_id ? `: ${data.booking_id}` : "."}`,
         });
-        await loadConfirmationContext({
-          loadingStatus: null,
-          readyStatus: "Booking saved",
-        });
+        if (wsRef.current === ws && !stopRequestedRef.current) {
+          setContext((current) => current ? { ...current, lead: data } : current);
+          setStatus("Booking saved");
+        }
       } else {
         const data = await fetchJson<Lead>(`/api/leads/${leadId}/feedback`, {
           method: "POST",
@@ -451,10 +532,10 @@ export default function ConfirmLeadPage({
           role: "system",
           text: "Feedback saved.",
         });
-        await loadConfirmationContext({
-          loadingStatus: null,
-          readyStatus: "Feedback saved",
-        });
+        if (wsRef.current === ws && !stopRequestedRef.current) {
+          setContext((current) => current ? { ...current, lead: data } : current);
+          setStatus("Feedback saved");
+        }
       }
     } catch (err) {
       resultPayload = {
@@ -463,17 +544,23 @@ export default function ConfirmLeadPage({
       };
     }
 
-    if (message.call_id) {
+    // A stopped session or interrupted turn must not inject a stale result.
+    if (wsRef.current === ws && !stopRequestedRef.current &&
+        toolTurnVersionRef.current === toolTurnVersion) {
       pendingToolResultsRef.current.push({
         call_id: message.call_id,
         result: JSON.stringify(resultPayload),
       });
+      flushPendingToolResults();
     }
   }
 
   function flushPendingToolResults() {
     const ws = wsRef.current;
-    if (!ws || ws.readyState !== WebSocket.OPEN) return;
+    // Either the API or reply.done can finish first. Flush from both paths,
+    // but only between replies, so the continuation includes spoken audio.
+    if (!ws || ws.readyState !== WebSocket.OPEN ||
+        stopRequestedRef.current || !toolResultWindowOpenRef.current) return;
 
     while (pendingToolResultsRef.current.length > 0) {
       const pending = pendingToolResultsRef.current.shift();
@@ -494,16 +581,22 @@ export default function ConfirmLeadPage({
       return;
     }
 
-    setStatus("Requesting voice token...");
+    setStatus("Checking follow-up preferences...");
     setTranscript([]);
     transcriptTextRef.current = "";
     hasEndedRef.current = false;
+    stopRequestedRef.current = false;
+    shouldAutoEndAfterReplyRef.current = false;
+    clearAutoEndTimer();
 
     try {
-      const tokenData = await fetchJson<VoiceTokenResponse>("/api/voice-token");
-
-      if (!tokenData.token) {
-        throw new Error(tokenData.error ?? "Failed to mint voice token.");
+      const freshContext = await fetchJson<ConfirmationContext>(
+        `/api/leads/${leadId}/confirmation-context`,
+      );
+      setContext(freshContext);
+      if (!normalizeAgentFollowUpPreferences(freshContext).confirmation_call_enabled) {
+        setStatus(FOLLOW_UP_DISABLED_MESSAGE);
+        return;
       }
 
       setStatus("Starting confirmation call record...");
@@ -517,11 +610,24 @@ export default function ConfirmLeadPage({
         },
       );
 
+      if (callStartData.status === "disabled") {
+        setContext({ ...freshContext, ...normalizeAgentFollowUpPreferences(callStartData) });
+        setStatus(FOLLOW_UP_DISABLED_MESSAGE);
+        return;
+      }
       if (!callStartData.id) {
         throw new Error(callStartData.error ?? "Failed to start call record.");
       }
 
       dbCallIdRef.current = callStartData.id;
+      const sessionContext = { ...freshContext, ...normalizeAgentFollowUpPreferences(callStartData) };
+      setContext(sessionContext);
+      feedbackEnabledRef.current = sessionContext.feedback_enabled;
+
+      const tokenData = await fetchJson<VoiceTokenResponse>("/api/voice-token");
+      if (!tokenData.token) {
+        throw new Error(tokenData.error ?? "Failed to mint voice token.");
+      }
 
       setStatus("Requesting microphone...");
 
@@ -578,7 +684,7 @@ export default function ConfirmLeadPage({
           JSON.stringify({
             type: "session.update",
             session: {
-              system_prompt: buildConfirmationPrompt(context),
+              system_prompt: buildConfirmationPrompt(sessionContext),
               greeting: `Hi, this is a quick call from ${displayValue(
                 context.business_name,
               )} to confirm your ${displayValue(
@@ -640,14 +746,16 @@ export default function ConfirmLeadPage({
                     required: ["feedback_rating"],
                   },
                 },
-              ],
+              ].filter((tool) => tool.name !== "capture_feedback" || sessionContext.feedback_enabled),
             },
           }),
         );
       });
 
       ws.addEventListener("message", (event) => {
+        if (wsRef.current !== ws) return;
         const message = JSON.parse(event.data as string) as VoiceAgentMessage;
+        if (stopRequestedRef.current && message.type !== "session.ended") return;
 
         if (message.type === "session.ready") {
           readyRef.current = true;
@@ -658,6 +766,8 @@ export default function ConfirmLeadPage({
             role: "system",
             text: "Session ready. Start speaking.",
           });
+        } else if (message.type === "reply.started" || message.type === "input.speech.started") {
+          toolResultWindowOpenRef.current = false;
         } else if (message.type === "reply.audio" && message.data) {
           resetInactivityTimer();
           playAudioChunk(message.data);
@@ -678,6 +788,9 @@ export default function ConfirmLeadPage({
             partial: false,
           });
           appendTranscriptText("user", message.text ?? "");
+          if (hasConversationEndingIntent(message.text ?? "")) {
+            shouldAutoEndAfterReplyRef.current = true;
+          }
         } else if (message.type === "transcript.agent.delta") {
           resetInactivityTimer();
           const id = message.item_id ?? message.reply_id ?? "agent-partial";
@@ -708,13 +821,22 @@ export default function ConfirmLeadPage({
             partial: false,
           });
           appendTranscriptText("agent", message.text ?? "");
+          if (hasAgentClosingReply(message.text ?? "")) {
+            shouldAutoEndAfterReplyRef.current = true;
+          }
         } else if (message.type === "tool.call") {
           resetInactivityTimer();
           void handleToolCall(message);
         } else if (message.type === "reply.done") {
           resetInactivityTimer();
+          toolResultWindowOpenRef.current = message.status !== "interrupted";
           if (message.status === "interrupted") {
+            pendingToolResultsRef.current = [];
+            toolTurnVersionRef.current += 1;
             playbackTimeRef.current = audioContext.currentTime;
+            shouldAutoEndAfterReplyRef.current = false;
+          } else {
+            scheduleAutoEndAfterReply();
           }
           flushPendingToolResults();
         } else if (message.type === "session.ended") {
@@ -749,19 +871,16 @@ export default function ConfirmLeadPage({
   }
 
   function stopCall() {
-    const ws = wsRef.current;
-    setStatus("Ending call...");
-
-    if (ws?.readyState === WebSocket.OPEN) {
-      ws.send(JSON.stringify({ type: "session.end" }));
-    } else {
-      void endCallOnServer().finally(cleanup);
-    }
+    requestStopCall();
   }
 
   useEffect(() => {
     function endOnPageHide() {
-      if (wsRef.current?.readyState === WebSocket.OPEN) {
+      if (
+        !stopRequestedRef.current &&
+        wsRef.current?.readyState === WebSocket.OPEN
+      ) {
+        stopRequestedRef.current = true;
         wsRef.current.send(JSON.stringify({ type: "session.end" }));
       }
     }
@@ -773,6 +892,10 @@ export default function ConfirmLeadPage({
       if (inactivityTimerRef.current) {
         clearTimeout(inactivityTimerRef.current);
         inactivityTimerRef.current = null;
+      }
+      if (autoEndTimerRef.current) {
+        clearTimeout(autoEndTimerRef.current);
+        autoEndTimerRef.current = null;
       }
       readyRef.current = false;
       workletRef.current?.disconnect();
@@ -789,7 +912,9 @@ export default function ConfirmLeadPage({
         <div>
           <h1 className="text-3xl font-semibold">Confirmation Call</h1>
           <p className="mt-2 text-sm text-zinc-600">
-            Confirm the appointment, assign a booking ID, and collect quick feedback.
+            {normalizeAgentFollowUpPreferences(context).feedback_enabled
+              ? "Confirm the appointment, assign a booking ID, and collect quick feedback."
+              : "Confirm the appointment details and assign a booking ID."}
           </p>
         </div>
 
@@ -853,7 +978,8 @@ export default function ConfirmLeadPage({
                   Confirmation
                 </dt>
                 <dd className="mt-1 text-sm text-zinc-800">
-                  {displayValue(context.lead.confirmation_status)}
+                  {normalizeAgentFollowUpPreferences(context).confirmation_call_enabled
+                    ? displayValue(context.lead.confirmation_status) : "Follow-up off"}
                 </dd>
               </div>
             </dl>
@@ -866,7 +992,8 @@ export default function ConfirmLeadPage({
               <h2 className="text-sm font-semibold uppercase tracking-wide text-zinc-500">
                 After-call results
               </h2>
-              <StatusBadge value={context.lead.confirmation_status} />
+              <StatusBadge value={normalizeAgentFollowUpPreferences(context).confirmation_call_enabled
+                ? context.lead.confirmation_status : "follow_up_off"} />
             </div>
 
             <dl className="mt-4 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
@@ -920,7 +1047,7 @@ export default function ConfirmLeadPage({
               className="rounded-md bg-zinc-950 px-4 py-2 text-sm font-medium text-white disabled:cursor-not-allowed disabled:bg-zinc-400"
               type="button"
               onClick={startCall}
-              disabled={isCalling || !context || Boolean(error)}
+              disabled={isCalling || !context || Boolean(error) || !normalizeAgentFollowUpPreferences(context).confirmation_call_enabled}
             >
               Start Confirmation Call
             </button>

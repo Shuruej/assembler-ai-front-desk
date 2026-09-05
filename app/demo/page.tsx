@@ -20,6 +20,10 @@ type VoiceTokenResponse = {
 type CallStartResponse = {
   id?: string;
   error?: string;
+  confirmation_call_enabled?: boolean;
+  feedback_enabled?: boolean;
+  session_prompt?: string;
+  timezone?: string;
 };
 
 type VoiceAgentMessage = {
@@ -38,6 +42,42 @@ type VoiceAgentMessage = {
 };
 
 const CALL_INACTIVITY_TIMEOUT_MS = 20_000;
+const AUTO_END_AFTER_REPLY_BUFFER_MS = 350;
+
+function normalizeIntentText(text: string) {
+  return text
+    .toLowerCase()
+    .replace(/[’`]/g, "'")
+    .replace(/[^a-z0-9'\s]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function hasConversationEndingIntent(text: string) {
+  const normalized = normalizeIntentText(text);
+
+  if (!normalized) return false;
+
+  return (
+    /(?:^|\s)(?:that'?s|that is)\s+all(?:\s+for\s+(?:today|now))?$/.test(
+      normalized,
+    ) ||
+    /(?:^|\s)(?:goodbye|bye bye|bye)$/.test(normalized) ||
+    /(?:^|\s)test\s+is\s+complete$/.test(normalized)
+  );
+}
+
+function hasAgentClosingReply(text: string) {
+  const normalized = normalizeIntentText(text);
+
+  if (!normalized) return false;
+
+  return (
+    /(?:^|\s)(?:goodbye|bye bye|bye)$/.test(normalized) ||
+    /\bhave\s+a\s+(?:wonderful|great|good|nice)\s+day$/.test(normalized) ||
+    /\bthank\s+you\s+for\s+calling$/.test(normalized)
+  );
+}
 
 function arrayBufferToBase64(buffer: ArrayBuffer): string {
   const bytes = new Uint8Array(buffer);
@@ -86,11 +126,18 @@ function DemoPageContent() {
   const playbackTimeRef = useRef(0);
   const readyRef = useRef(false);
   const inactivityTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const autoEndTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const dbCallIdRef = useRef<string | null>(null);
   const transcriptTextRef = useRef<string>("");
   const pendingToolResultsRef = useRef<{ call_id: string; result: string }[]>([]);
+  const toolResultWindowOpenRef = useRef(false);
+  const handledToolCallsRef = useRef(new Set<string>());
+  const toolTurnVersionRef = useRef(0);
   const hasEndedRef = useRef(false);
+  const stopRequestedRef = useRef(false);
+  const shouldAutoEndAfterReplyRef = useRef(false);
+  const sessionPromptRef = useRef<string | null>(null);
 
   function addTranscript(entry: TranscriptEntry) {
     setTranscript((current) => [...current, entry]);
@@ -162,6 +209,13 @@ function DemoPageContent() {
     }
   }
 
+  function clearAutoEndTimer() {
+    if (autoEndTimerRef.current) {
+      clearTimeout(autoEndTimerRef.current);
+      autoEndTimerRef.current = null;
+    }
+  }
+
   function resetInactivityTimer() {
     clearInactivityTimer();
 
@@ -172,8 +226,42 @@ function DemoPageContent() {
     }, CALL_INACTIVITY_TIMEOUT_MS);
   }
 
+  function requestStopCall(nextStatus = "Ending call...") {
+    if (stopRequestedRef.current) return;
+    stopRequestedRef.current = true;
+    clearInactivityTimer();
+    clearAutoEndTimer();
+    setStatus(nextStatus);
+
+    const ws = wsRef.current;
+
+    if (ws?.readyState === WebSocket.OPEN) {
+      ws.send(JSON.stringify({ type: "session.end" }));
+    } else {
+      void endCallOnServer().finally(cleanup);
+    }
+  }
+
+  function scheduleAutoEndAfterReply() {
+    if (!shouldAutoEndAfterReplyRef.current) return;
+
+    shouldAutoEndAfterReplyRef.current = false;
+    clearAutoEndTimer();
+
+    const audioContext = audioContextRef.current;
+    const remainingPlaybackMs = audioContext
+      ? Math.max(0, playbackTimeRef.current - audioContext.currentTime) * 1000
+      : 0;
+
+    autoEndTimerRef.current = setTimeout(() => {
+      autoEndTimerRef.current = null;
+      requestStopCall("Ending call after goodbye...");
+    }, remainingPlaybackMs + AUTO_END_AFTER_REPLY_BUFFER_MS);
+  }
+
   function cleanup(nextStatus = "Idle") {
     clearInactivityTimer();
+    clearAutoEndTimer();
     readyRef.current = false;
     workletRef.current?.disconnect();
     silenceRef.current?.disconnect();
@@ -189,24 +277,28 @@ function DemoPageContent() {
     silenceRef.current = null;
     playbackTimeRef.current = 0;
     pendingToolResultsRef.current = [];
+    toolResultWindowOpenRef.current = false;
+    handledToolCallsRef.current.clear();
+    toolTurnVersionRef.current += 1;
+    stopRequestedRef.current = false;
+    shouldAutoEndAfterReplyRef.current = false;
+    sessionPromptRef.current = null;
     setIsCalling(false);
     setStatus(nextStatus);
   }
 
   function endCallForInactivity() {
-    clearInactivityTimer();
+    if (stopRequestedRef.current) return;
 
     addTranscript({
       id: `system-inactivity-${Date.now()}`,
       role: "system",
       text: "No voice activity for 20 seconds. Call ended automatically.",
     });
-    setStatus("No voice activity for 20 seconds. Ending call...");
-
     const ws = wsRef.current;
+    requestStopCall("No voice activity for 20 seconds. Ending call...");
 
     if (ws?.readyState === WebSocket.OPEN) {
-      ws.send(JSON.stringify({ type: "session.end" }));
       setTimeout(() => {
         if (wsRef.current === ws) {
           ws.close();
@@ -221,6 +313,11 @@ function DemoPageContent() {
   async function handleToolCall(message: VoiceAgentMessage) {
     if (message.name !== "capture_lead") return;
 
+    const ws = wsRef.current;
+    if (!message.call_id || !ws || stopRequestedRef.current) return;
+    if (handledToolCallsRef.current.has(message.call_id)) return;
+    handledToolCallsRef.current.add(message.call_id);
+    const toolTurnVersion = toolTurnVersionRef.current;
     const args = (message.arguments ?? {}) as Record<string, unknown>;
     const dbCallId = dbCallIdRef.current;
 
@@ -262,17 +359,29 @@ function DemoPageContent() {
       }
     }
 
-    if (message.call_id) {
+    if (
+      wsRef.current === ws &&
+      !stopRequestedRef.current &&
+      toolTurnVersionRef.current === toolTurnVersion
+    ) {
       pendingToolResultsRef.current.push({
         call_id: message.call_id,
         result: JSON.stringify(resultPayload),
       });
+      flushPendingToolResults();
     }
   }
 
   function flushPendingToolResults() {
     const ws = wsRef.current;
-    if (!ws || ws.readyState !== WebSocket.OPEN) return;
+    if (
+      !ws ||
+      ws.readyState !== WebSocket.OPEN ||
+      stopRequestedRef.current ||
+      !toolResultWindowOpenRef.current
+    ) {
+      return;
+    }
 
     while (pendingToolResultsRef.current.length > 0) {
       const pending = pendingToolResultsRef.current.shift();
@@ -298,6 +407,9 @@ function DemoPageContent() {
     setTranscript([]);
     transcriptTextRef.current = "";
     hasEndedRef.current = false;
+    stopRequestedRef.current = false;
+    shouldAutoEndAfterReplyRef.current = false;
+    clearAutoEndTimer();
 
     try {
       const tokenResponse = await fetch(
@@ -323,6 +435,7 @@ function DemoPageContent() {
       }
 
       dbCallIdRef.current = callStartData.id;
+      sessionPromptRef.current = callStartData.session_prompt ?? null;
 
       setStatus("Requesting microphone...");
 
@@ -378,7 +491,12 @@ function DemoPageContent() {
         ws.send(
           JSON.stringify({
             type: "session.update",
-            session: { agent_id: tokenData.agent_id ?? trimmedAgentId },
+            session: {
+              agent_id: tokenData.agent_id ?? trimmedAgentId,
+              ...(sessionPromptRef.current
+                ? { system_prompt: sessionPromptRef.current }
+                : {}),
+            },
           }),
         );
       });
@@ -398,6 +516,8 @@ function DemoPageContent() {
         } else if (message.type === "reply.audio" && message.data) {
           resetInactivityTimer();
           playAudioChunk(message.data);
+        } else if (message.type === "reply.started" || message.type === "input.speech.started") {
+          toolResultWindowOpenRef.current = false;
         } else if (message.type === "transcript.user.delta") {
           resetInactivityTimer();
           upsertTranscript({
@@ -415,6 +535,9 @@ function DemoPageContent() {
             partial: false,
           });
           appendTranscriptText("user", message.text ?? "");
+          if (hasConversationEndingIntent(message.text ?? "")) {
+            shouldAutoEndAfterReplyRef.current = true;
+          }
         } else if (message.type === "transcript.agent.delta") {
           resetInactivityTimer();
           const id = message.item_id ?? message.reply_id ?? "agent-partial";
@@ -442,13 +565,22 @@ function DemoPageContent() {
             partial: false,
           });
           appendTranscriptText("agent", message.text ?? "");
+          if (hasAgentClosingReply(message.text ?? "")) {
+            shouldAutoEndAfterReplyRef.current = true;
+          }
         } else if (message.type === "tool.call") {
           resetInactivityTimer();
           void handleToolCall(message);
         } else if (message.type === "reply.done") {
           resetInactivityTimer();
+          toolResultWindowOpenRef.current = message.status !== "interrupted";
           if (message.status === "interrupted") {
+            pendingToolResultsRef.current = [];
+            toolTurnVersionRef.current += 1;
             playbackTimeRef.current = audioContext.currentTime;
+            shouldAutoEndAfterReplyRef.current = false;
+          } else {
+            scheduleAutoEndAfterReply();
           }
           flushPendingToolResults();
         } else if (message.type === "session.ended") {
@@ -483,19 +615,16 @@ function DemoPageContent() {
   }
 
   function stopCall() {
-    const ws = wsRef.current;
-    setStatus("Ending call...");
-
-    if (ws?.readyState === WebSocket.OPEN) {
-      ws.send(JSON.stringify({ type: "session.end" }));
-    } else {
-      void endCallOnServer().finally(cleanup);
-    }
+    requestStopCall();
   }
 
   useEffect(() => {
     function endOnPageHide() {
-      if (wsRef.current?.readyState === WebSocket.OPEN) {
+      if (
+        !stopRequestedRef.current &&
+        wsRef.current?.readyState === WebSocket.OPEN
+      ) {
+        stopRequestedRef.current = true;
         wsRef.current.send(JSON.stringify({ type: "session.end" }));
       }
     }
@@ -507,6 +636,10 @@ function DemoPageContent() {
       if (inactivityTimerRef.current) {
         clearTimeout(inactivityTimerRef.current);
         inactivityTimerRef.current = null;
+      }
+      if (autoEndTimerRef.current) {
+        clearTimeout(autoEndTimerRef.current);
+        autoEndTimerRef.current = null;
       }
       readyRef.current = false;
       workletRef.current?.disconnect();

@@ -1,4 +1,6 @@
 import { createSupabaseServiceRoleClient } from "@/lib/supabase/server";
+import { buildRuntimeSystemPrompt } from "@/lib/assemblyai/client";
+import { normalizeAgentFollowUpPreferences } from "@/lib/follow-up-preferences";
 
 type StartCallRequestBody = {
   assemblyai_agent_id?: unknown;
@@ -29,7 +31,7 @@ export async function POST(request: Request) {
 
   const { data: agent, error: agentError } = await supabase
     .from("agents")
-    .select("id")
+    .select("*")
     .eq("assemblyai_agent_id", assemblyAIAgentId)
     .single();
 
@@ -54,5 +56,26 @@ export async function POST(request: Request) {
     return Response.json({ error: callError.message }, { status: 500 });
   }
 
-  return Response.json(call, { status: 201 });
+  const preferences = normalizeAgentFollowUpPreferences(agent);
+
+  return Response.json(
+    {
+      ...call,
+      ...preferences,
+      session_prompt: buildRuntimeSystemPrompt({
+        name: agent.name ?? "the AI receptionist",
+        businessName: agent.business_name ?? "the business",
+        industry: agent.industry,
+        agentPurpose: agent.agent_purpose,
+        businessKnowledge: agent.business_knowledge,
+        businessHoursStart: agent.business_hours_start,
+        businessHoursEnd: agent.business_hours_end,
+        timezone: agent.timezone,
+        confirmationCallEnabled: preferences.confirmation_call_enabled,
+        feedbackEnabled: preferences.feedback_enabled,
+      }),
+      timezone: agent.timezone ?? "Asia/Karachi",
+    },
+    { status: 201 },
+  );
 }

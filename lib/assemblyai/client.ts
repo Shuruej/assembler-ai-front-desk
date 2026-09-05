@@ -6,6 +6,11 @@ export type CreateAssemblyAIAgentInput = {
   industry?: string | null;
   agentPurpose?: string | null;
   businessKnowledge?: string | null;
+  businessHoursStart?: string | null;
+  businessHoursEnd?: string | null;
+  timezone?: string | null;
+  confirmationCallEnabled?: boolean | null;
+  feedbackEnabled?: boolean | null;
 };
 
 export type AssemblyAIAgent = {
@@ -89,30 +94,95 @@ function normalizePurpose(value?: string | null): string {
   return value && PURPOSE_LABELS[value] ? value : "general_receptionist";
 }
 
-function buildSystemPrompt({
+function normalizeTimezone(value?: string | null): string {
+  const trimmed = value?.trim();
+  if (!trimmed) return "Asia/Karachi";
+
+  try {
+    new Intl.DateTimeFormat("en-US", { timeZone: trimmed }).format(new Date());
+    return trimmed;
+  } catch {
+    return "Asia/Karachi";
+  }
+}
+
+function formatCurrentLocalDateTime(timezone?: string | null): string {
+  const normalizedTimezone = normalizeTimezone(timezone);
+  return new Intl.DateTimeFormat("en-US", {
+    timeZone: normalizedTimezone,
+    dateStyle: "full",
+    timeStyle: "long",
+  }).format(new Date());
+}
+
+function buildFollowUpInstruction({
+  confirmationCallEnabled,
+  feedbackEnabled,
+}: Pick<CreateAssemblyAIAgentInput, "confirmationCallEnabled" | "feedbackEnabled">): string {
+  const confirmationEnabled = confirmationCallEnabled !== false;
+  const feedbackAllowed = confirmationEnabled && feedbackEnabled !== false;
+
+  if (!confirmationEnabled) {
+    return [
+      "Follow-up confirmation calls are disabled for this business.",
+      "After capture_lead succeeds, do not promise that the team will call, message, email, confirm, or follow up.",
+      "Say a neutral response such as: Your request has been saved. Is there anything else I can help you with?",
+    ].join(" ");
+  }
+
+  if (!feedbackAllowed) {
+    return "Follow-up confirmation calls are enabled, but feedback collection after confirmation is disabled.";
+  }
+
+  return "Follow-up confirmation calls and feedback collection after confirmation are enabled.";
+}
+
+export function buildSystemPrompt({
   name,
   businessName,
   industry,
   agentPurpose,
   businessKnowledge,
+  businessHoursStart,
+  businessHoursEnd,
+  timezone,
+  confirmationCallEnabled,
+  feedbackEnabled,
 }: CreateAssemblyAIAgentInput): string {
   const normalizedPurpose = normalizePurpose(agentPurpose);
   const knowledge = businessKnowledge?.trim();
+  const normalizedTimezone = normalizeTimezone(timezone);
+  const hours = businessHoursStart || businessHoursEnd
+    ? `Business hours are ${businessHoursStart || "not specified"} to ${
+        businessHoursEnd || "not specified"
+      } in ${normalizedTimezone}.`
+    : `The business timezone is ${normalizedTimezone}.`;
 
   return [
     `You are ${name}, a professional ${PURPOSE_LABELS[normalizedPurpose]} voice agent for ${businessName}.`,
     industry
       ? `The business category is ${industry}.`
       : "The business category may vary.",
+    hours,
     `Agent purpose: ${PURPOSE_LABELS[normalizedPurpose]}. ${PURPOSE_INSTRUCTIONS[normalizedPurpose]}`,
     knowledge
       ? `Use this business knowledge as your primary source for business-specific answers: ${knowledge}`
       : "No detailed business knowledge was provided, so ask concise clarifying questions and do not invent business-specific details.",
     "Do not invent business-specific details, policies, prices, availability, or commitments that are not in the provided business knowledge or clearly supplied by the caller.",
+    buildFollowUpInstruction({ confirmationCallEnabled, feedbackEnabled }),
     "Track the details the caller has already clearly provided in this conversation and reuse them; never ask again for information they have already given.",
     `Tool use guidance for capture_lead: ${TOOL_DESCRIPTIONS[normalizedPurpose]}`,
     "Never call the capture_lead tool until you have read the captured details back to the caller and the caller has explicitly confirmed with an affirmative response such as yes, correct, or that's right. This confirmation step is required even if the caller gave every detail in a single turn. When reading a phone number back, speak each digit individually and clearly, grouped in short pairs or triples with pauses, for example: zero three zero zero, one two three, one two three four, and ask: did I get that number right? If the caller corrects any detail, repeat the corrected version back once more and wait for explicit confirmation again before calling capture_lead. Keep the confirmation exchange brief and natural, using 1-2 short sentences, not robotic or repetitive beyond what is needed.",
     "Keep responses concise, natural, and suitable for a live voice conversation, not robotic.",
+  ].join(" ");
+}
+
+export function buildRuntimeSystemPrompt(input: CreateAssemblyAIAgentInput): string {
+  const normalizedTimezone = normalizeTimezone(input.timezone);
+  return [
+    buildSystemPrompt(input),
+    `Current local date and time for this call: ${formatCurrentLocalDateTime(normalizedTimezone)} (${normalizedTimezone}).`,
+    "Resolve relative date phrases such as today, tomorrow, next Wednesday, and this Friday against that current local date and timezone. Do not use model memory or any hardcoded date for relative dates.",
   ].join(" ");
 }
 
@@ -122,6 +192,11 @@ export async function createAssemblyAIAgent({
   industry,
   agentPurpose,
   businessKnowledge,
+  businessHoursStart,
+  businessHoursEnd,
+  timezone,
+  confirmationCallEnabled,
+  feedbackEnabled,
 }: CreateAssemblyAIAgentInput): Promise<AssemblyAIAgent> {
   const normalizedPurpose = normalizePurpose(agentPurpose);
 
@@ -139,6 +214,11 @@ export async function createAssemblyAIAgent({
         industry,
         agentPurpose: normalizedPurpose,
         businessKnowledge,
+        businessHoursStart,
+        businessHoursEnd,
+        timezone,
+        confirmationCallEnabled,
+        feedbackEnabled,
       }),
       greeting: `Thanks for calling ${businessName}. How can I help you today?`,
       voice: { voice_id: "alba" },
