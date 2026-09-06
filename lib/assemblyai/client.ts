@@ -31,6 +31,25 @@ type AssemblyAIErrorResponse = {
   code?: string;
 };
 
+type FrontDeskAgentConfig = {
+  name: string;
+  system_prompt: string;
+  greeting: string;
+  voice: {
+    voice_id: string;
+  };
+  tools: {
+    type: "function";
+    name: string;
+    description: string;
+    parameters: {
+      type: "object";
+      properties: Record<string, { type: string; description: string; format?: string }>;
+      required: string[];
+    };
+  }[];
+};
+
 const PURPOSE_LABELS: Record<string, string> = {
   general_receptionist: "general receptionist",
   appointment_booking: "appointment booking",
@@ -199,6 +218,157 @@ export function buildRuntimeSystemPrompt(input: CreateAssemblyAIAgentInput): str
   ].join(" ");
 }
 
+function buildFrontDeskAgentConfig({
+  name,
+  businessName,
+  industry,
+  agentPurpose,
+  businessKnowledge,
+  businessHoursStart,
+  businessHoursEnd,
+  timezone,
+  confirmationCallEnabled,
+  feedbackEnabled,
+}: CreateAssemblyAIAgentInput): FrontDeskAgentConfig {
+  const normalizedPurpose = normalizePurpose(agentPurpose);
+
+  return {
+    name,
+    system_prompt: buildSystemPrompt({
+      name,
+      businessName,
+      industry,
+      agentPurpose: normalizedPurpose,
+      businessKnowledge,
+      businessHoursStart,
+      businessHoursEnd,
+      timezone,
+      confirmationCallEnabled,
+      feedbackEnabled,
+    }),
+    greeting: `Thanks for calling ${businessName}. How can I help you today?`,
+    voice: { voice_id: "alba" },
+    tools: [
+      {
+        type: "function",
+        name: "capture_lead",
+        description: TOOL_DESCRIPTIONS[normalizedPurpose],
+        parameters: {
+          type: "object",
+          properties: {
+            customer_name: {
+              type: "string",
+              description: "The caller's name.",
+            },
+            phone_number: {
+              type: "string",
+              description:
+                "The caller's phone number, preferably including country code if available.",
+            },
+            requested_service: {
+              type: "string",
+              description:
+                "The service, product, booking, or inquiry the caller is interested in.",
+            },
+            preferred_datetime: {
+              type: "string",
+              description:
+                "The caller's preferred date and time in ISO 8601 format if possible.",
+              format: "date-time",
+            },
+            notes: {
+              type: "string",
+              description:
+                "Any useful context, constraints, or follow-up notes from the conversation.",
+            },
+          },
+          required: ["customer_name", "phone_number"],
+        },
+      },
+      {
+        type: "function",
+        name: "escalate_to_human",
+        description: ESCALATE_TO_HUMAN_TOOL_DESCRIPTION,
+        parameters: {
+          type: "object",
+          properties: {
+            reason: {
+              type: "string",
+              description: "Brief description of why escalation is needed.",
+            },
+            customer_name: {
+              type: "string",
+              description: "The caller's name, if known.",
+            },
+            phone_number: {
+              type: "string",
+              description: "The caller's phone number, if known.",
+            },
+            notes: {
+              type: "string",
+              description:
+                "Any useful context for the human team member who follows up.",
+            },
+          },
+          required: ["reason"],
+        },
+      },
+      {
+        type: "function",
+        name: "check_availability",
+        description: CHECK_AVAILABILITY_TOOL_DESCRIPTION,
+        parameters: {
+          type: "object",
+          properties: {
+            requested_date: {
+              type: "string",
+              description: "Preferred booking date in YYYY-MM-DD format.",
+            },
+          },
+          required: ["requested_date"],
+        },
+      },
+      {
+        type: "function",
+        name: "book_slot",
+        description: BOOK_SLOT_TOOL_DESCRIPTION,
+        parameters: {
+          type: "object",
+          properties: {
+            slot_date: {
+              type: "string",
+              description: "Booking date in YYYY-MM-DD format.",
+            },
+            slot_time: {
+              type: "string",
+              description: "Exact time matching one returned by check_availability.",
+            },
+            customer_name: {
+              type: "string",
+              description: "The caller's name.",
+            },
+            phone_number: {
+              type: "string",
+              description:
+                "The caller's phone number, preferably including country code if available.",
+            },
+            requested_service: {
+              type: "string",
+              description: "The requested service, booking, or appointment type.",
+            },
+            notes: {
+              type: "string",
+              description:
+                "Any useful context, constraints, or booking notes from the conversation.",
+            },
+          },
+          required: ["slot_date", "slot_time", "customer_name", "phone_number"],
+        },
+      },
+    ],
+  };
+}
+
 export async function createAssemblyAIAgent({
   name,
   businessName,
@@ -211,149 +381,24 @@ export async function createAssemblyAIAgent({
   confirmationCallEnabled,
   feedbackEnabled,
 }: CreateAssemblyAIAgentInput): Promise<AssemblyAIAgent> {
-  const normalizedPurpose = normalizePurpose(agentPurpose);
-
   const response = await fetch(`${ASSEMBLYAI_AGENTS_BASE_URL}/v1/agents`, {
     method: "POST",
     headers: {
       Authorization: requireAssemblyAIApiKey(),
       "Content-Type": "application/json",
     },
-    body: JSON.stringify({
+    body: JSON.stringify(buildFrontDeskAgentConfig({
       name,
-      system_prompt: buildSystemPrompt({
-        name,
-        businessName,
-        industry,
-        agentPurpose: normalizedPurpose,
-        businessKnowledge,
-        businessHoursStart,
-        businessHoursEnd,
-        timezone,
-        confirmationCallEnabled,
-        feedbackEnabled,
-      }),
-      greeting: `Thanks for calling ${businessName}. How can I help you today?`,
-      voice: { voice_id: "alba" },
-      tools: [
-        {
-          type: "function",
-          name: "capture_lead",
-          description: TOOL_DESCRIPTIONS[normalizedPurpose],
-          parameters: {
-            type: "object",
-            properties: {
-              customer_name: {
-                type: "string",
-                description: "The caller's name.",
-              },
-              phone_number: {
-                type: "string",
-                description:
-                  "The caller's phone number, preferably including country code if available.",
-              },
-              requested_service: {
-                type: "string",
-                description:
-                  "The service, product, booking, or inquiry the caller is interested in.",
-              },
-              preferred_datetime: {
-                type: "string",
-                description:
-                  "The caller's preferred date and time in ISO 8601 format if possible.",
-                format: "date-time",
-              },
-              notes: {
-                type: "string",
-                description:
-                  "Any useful context, constraints, or follow-up notes from the conversation.",
-              },
-            },
-            required: ["customer_name", "phone_number"],
-          },
-        },
-        {
-          type: "function",
-          name: "escalate_to_human",
-          description: ESCALATE_TO_HUMAN_TOOL_DESCRIPTION,
-          parameters: {
-            type: "object",
-            properties: {
-              reason: {
-                type: "string",
-                description: "Brief description of why escalation is needed.",
-              },
-              customer_name: {
-                type: "string",
-                description: "The caller's name, if known.",
-              },
-              phone_number: {
-                type: "string",
-                description: "The caller's phone number, if known.",
-              },
-              notes: {
-                type: "string",
-                description:
-                  "Any useful context for the human team member who follows up.",
-              },
-            },
-            required: ["reason"],
-          },
-        },
-        {
-          type: "function",
-          name: "check_availability",
-          description: CHECK_AVAILABILITY_TOOL_DESCRIPTION,
-          parameters: {
-            type: "object",
-            properties: {
-              requested_date: {
-                type: "string",
-                description: "Preferred booking date in YYYY-MM-DD format.",
-              },
-            },
-            required: ["requested_date"],
-          },
-        },
-        {
-          type: "function",
-          name: "book_slot",
-          description: BOOK_SLOT_TOOL_DESCRIPTION,
-          parameters: {
-            type: "object",
-            properties: {
-              slot_date: {
-                type: "string",
-                description: "Booking date in YYYY-MM-DD format.",
-              },
-              slot_time: {
-                type: "string",
-                description: "Exact time matching one returned by check_availability.",
-              },
-              customer_name: {
-                type: "string",
-                description: "The caller's name.",
-              },
-              phone_number: {
-                type: "string",
-                description:
-                  "The caller's phone number, preferably including country code if available.",
-              },
-              requested_service: {
-                type: "string",
-                description: "The requested service, booking, or appointment type.",
-              },
-              notes: {
-                type: "string",
-                description:
-                  "Any useful context, constraints, or booking notes from the conversation.",
-              },
-            },
-            required: ["slot_date", "slot_time", "customer_name", "phone_number"],
-          },
-        },
-      ],
-    }),
+      businessName,
+      industry,
+      agentPurpose,
+      businessKnowledge,
+      businessHoursStart,
+      businessHoursEnd,
+      timezone,
+      confirmationCallEnabled,
+      feedbackEnabled,
+    })),
   });
 
   const data = await parseAssemblyAIResponse(response);
@@ -364,6 +409,36 @@ export async function createAssemblyAIAgent({
       error?.detail ??
         error?.error ??
         `AssemblyAI agent creation failed with status ${response.status}.`,
+    );
+  }
+
+  return data as AssemblyAIAgent;
+}
+
+export async function updateAssemblyAIAgent(
+  assemblyaiAgentId: string,
+  input: CreateAssemblyAIAgentInput,
+): Promise<AssemblyAIAgent> {
+  const response = await fetch(
+    `${ASSEMBLYAI_AGENTS_BASE_URL}/v1/agents/${assemblyaiAgentId}`,
+    {
+      method: "PUT",
+      headers: {
+        Authorization: requireAssemblyAIApiKey(),
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(buildFrontDeskAgentConfig(input)),
+    },
+  );
+
+  const data = await parseAssemblyAIResponse(response);
+
+  if (!response.ok) {
+    const error = data as AssemblyAIErrorResponse | null;
+    throw new Error(
+      error?.detail ??
+        error?.error ??
+        `AssemblyAI agent update failed with status ${response.status}.`,
     );
   }
 

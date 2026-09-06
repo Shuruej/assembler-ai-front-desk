@@ -48,6 +48,21 @@ const AGENT_PURPOSE_OPTIONS = [
   { value: "feedback_collection", label: "Feedback collection" },
 ];
 
+const BUSINESS_DAY_OPTIONS = [
+  { value: "mon", label: "Mon" },
+  { value: "tue", label: "Tue" },
+  { value: "wed", label: "Wed" },
+  { value: "thu", label: "Thu" },
+  { value: "fri", label: "Fri" },
+  { value: "sat", label: "Sat" },
+  { value: "sun", label: "Sun" },
+] as const;
+
+const DEFAULT_BUSINESS_DAYS = BUSINESS_DAY_OPTIONS.map((day) => day.value);
+const DEFAULT_BUSINESS_HOURS_START = "09:00";
+const DEFAULT_BUSINESS_HOURS_END = "18:00";
+const DEFAULT_APPOINTMENT_DURATION_MINUTES = 60;
+
 const WORKFLOW_STEPS = ["Call", "Lead", "Confirm", "Book", "Feedback"];
 
 const DASHBOARD_PREVIEW = [
@@ -83,8 +98,18 @@ export default function Home() {
   const [followUpPreferences, setFollowUpPreferences] = useState<FollowUpPreferences>(
     DEFAULT_FOLLOW_UP_PREFERENCES,
   );
-  const [businessHoursStart, setBusinessHoursStart] = useState("");
-  const [businessHoursEnd, setBusinessHoursEnd] = useState("");
+  const [businessHoursStart, setBusinessHoursStart] = useState(
+    DEFAULT_BUSINESS_HOURS_START,
+  );
+  const [businessHoursEnd, setBusinessHoursEnd] = useState(
+    DEFAULT_BUSINESS_HOURS_END,
+  );
+  const [appointmentDurationMinutes, setAppointmentDurationMinutes] = useState(
+    DEFAULT_APPOINTMENT_DURATION_MINUTES,
+  );
+  const [businessDays, setBusinessDays] = useState<string[]>(
+    DEFAULT_BUSINESS_DAYS,
+  );
   const [timezone, setTimezone] = useState("Asia/Karachi");
   const [hasGeneratedConfig, setHasGeneratedConfig] = useState(false);
   const [businessName, setBusinessName] = useState("");
@@ -109,6 +134,8 @@ export default function Home() {
     business_knowledge: string;
     business_hours_start?: string;
     business_hours_end?: string;
+    appointment_duration_minutes?: number;
+    business_days?: string;
     timezone?: string;
   }, preferences?: FollowUpPreferences) {
     const response = await fetch("/api/agents", {
@@ -136,8 +163,10 @@ export default function Home() {
     setAgentName("");
     setAgentPurpose("general_receptionist");
     setBusinessKnowledge("");
-    setBusinessHoursStart("");
-    setBusinessHoursEnd("");
+    setBusinessHoursStart(DEFAULT_BUSINESS_HOURS_START);
+    setBusinessHoursEnd(DEFAULT_BUSINESS_HOURS_END);
+    setAppointmentDurationMinutes(DEFAULT_APPOINTMENT_DURATION_MINUTES);
+    setBusinessDays(DEFAULT_BUSINESS_DAYS);
     setTimezone("Asia/Karachi");
     setHasGeneratedConfig(false);
     setBusinessDescription("");
@@ -155,6 +184,106 @@ export default function Home() {
     ]
       .filter(Boolean)
       .join("\n\n");
+  }
+
+  function getBusinessDaysValue(): string {
+    return BUSINESS_DAY_OPTIONS.filter((day) => businessDays.includes(day.value))
+      .map((day) => day.value)
+      .join(",");
+  }
+
+  function toggleBusinessDay(day: string, checked: boolean) {
+    setBusinessDays((currentDays) => {
+      if (checked) {
+        return BUSINESS_DAY_OPTIONS.map((option) => option.value).filter(
+          (value) => value === day || currentDays.includes(value),
+        );
+      }
+
+      return currentDays.filter((value) => value !== day);
+    });
+  }
+
+  function renderSchedulingFields(idPrefix: string) {
+    return (
+      <div className="mt-4 space-y-4">
+        <div className="grid gap-4 sm:grid-cols-3">
+          <div className="flex flex-col gap-2">
+            <label
+              className="text-sm font-medium"
+              htmlFor={`${idPrefix}-business-hours-start`}
+            >
+              Opens
+            </label>
+            <input
+              id={`${idPrefix}-business-hours-start`}
+              className="rounded-md border border-[#E2D8DE] px-3 py-2 text-sm text-[#1C1A1E] outline-none focus:border-[#7B4764]"
+              type="time"
+              value={businessHoursStart}
+              onChange={(event) => setBusinessHoursStart(event.target.value)}
+            />
+          </div>
+          <div className="flex flex-col gap-2">
+            <label
+              className="text-sm font-medium"
+              htmlFor={`${idPrefix}-business-hours-end`}
+            >
+              Closes
+            </label>
+            <input
+              id={`${idPrefix}-business-hours-end`}
+              className="rounded-md border border-[#E2D8DE] px-3 py-2 text-sm text-[#1C1A1E] outline-none focus:border-[#7B4764]"
+              type="time"
+              value={businessHoursEnd}
+              onChange={(event) => setBusinessHoursEnd(event.target.value)}
+            />
+          </div>
+          <div className="flex flex-col gap-2">
+            <label
+              className="text-sm font-medium"
+              htmlFor={`${idPrefix}-appointment-duration`}
+            >
+              Appointment length
+            </label>
+            <input
+              id={`${idPrefix}-appointment-duration`}
+              className="rounded-md border border-[#E2D8DE] px-3 py-2 text-sm text-[#1C1A1E] outline-none focus:border-[#7B4764]"
+              min={1}
+              max={480}
+              step={15}
+              type="number"
+              value={appointmentDurationMinutes}
+              onChange={(event) =>
+                setAppointmentDurationMinutes(Number(event.target.value))
+              }
+            />
+          </div>
+        </div>
+
+        <fieldset className="rounded-md border border-[#E2D8DE] p-3">
+          <legend className="px-1 text-sm font-medium">Business days</legend>
+          <div className="mt-2 flex flex-wrap gap-2">
+            {BUSINESS_DAY_OPTIONS.map((day) => (
+              <label
+                className="inline-flex items-center gap-2 rounded-md border border-[#E2D8DE] bg-white px-3 py-2 text-sm text-[#1C1A1E]"
+                key={day.value}
+              >
+                <input
+                  checked={businessDays.includes(day.value)}
+                  className="h-4 w-4 accent-[#7B4764]"
+                  type="checkbox"
+                  value={day.value}
+                  onChange={(event) =>
+                    toggleBusinessDay(day.value, event.target.checked)
+                  }
+                />
+                {day.label}
+              </label>
+            ))}
+          </div>
+        </fieldset>
+      </div>
+    );
   }
 
   async function handleConfigureAgent(event: FormEvent<HTMLFormElement>) {
@@ -232,8 +361,11 @@ export default function Home() {
         name: trimmedAgentName,
         agent_purpose: agentPurpose,
         business_knowledge: getSimpleBusinessKnowledge(),
-        business_hours_start: businessHoursStart.trim(),
-        business_hours_end: businessHoursEnd.trim(),
+        business_hours_start:
+          businessHoursStart.trim() || DEFAULT_BUSINESS_HOURS_START,
+        business_hours_end: businessHoursEnd.trim() || DEFAULT_BUSINESS_HOURS_END,
+        appointment_duration_minutes: appointmentDurationMinutes,
+        business_days: getBusinessDaysValue(),
         timezone: timezone.trim(),
       }, followUpPreferences);
     } catch (err) {
@@ -268,8 +400,11 @@ export default function Home() {
         name: trimmedAgentName,
         agent_purpose: agentPurpose,
         business_knowledge: trimmedBusinessKnowledge,
-        business_hours_start: businessHoursStart.trim(),
-        business_hours_end: businessHoursEnd.trim(),
+        business_hours_start:
+          businessHoursStart.trim() || DEFAULT_BUSINESS_HOURS_START,
+        business_hours_end: businessHoursEnd.trim() || DEFAULT_BUSINESS_HOURS_END,
+        appointment_duration_minutes: appointmentDurationMinutes,
+        business_days: getBusinessDaysValue(),
         timezone: timezone.trim(),
       });
     } catch (err) {
@@ -781,53 +916,19 @@ export default function Home() {
                     </div>
                   </div>
 
-                  <div className="mt-4 grid gap-4 sm:grid-cols-3">
-                    <div className="flex flex-col gap-2">
-                      <label
-                        className="text-sm font-medium"
-                        htmlFor="business-hours-start"
-                      >
-                        Opens
-                      </label>
-                      <input
-                        id="business-hours-start"
-                        className="rounded-md border border-[#E2D8DE] px-3 py-2 text-sm text-[#1C1A1E] outline-none focus:border-[#7B4764]"
-                        type="text"
-                        value={businessHoursStart}
-                        onChange={(event) =>
-                          setBusinessHoursStart(event.target.value)
-                        }
-                      />
-                    </div>
-                    <div className="flex flex-col gap-2">
-                      <label
-                        className="text-sm font-medium"
-                        htmlFor="business-hours-end"
-                      >
-                        Closes
-                      </label>
-                      <input
-                        id="business-hours-end"
-                        className="rounded-md border border-[#E2D8DE] px-3 py-2 text-sm text-[#1C1A1E] outline-none focus:border-[#7B4764]"
-                        type="text"
-                        value={businessHoursEnd}
-                        onChange={(event) =>
-                          setBusinessHoursEnd(event.target.value)
-                        }
-                      />
-                    </div>
-                    <div className="flex flex-col gap-2">
-                      <label className="text-sm font-medium" htmlFor="timezone">
-                        Timezone
-                      </label>
-                      <input
-                        id="timezone"
-                        className="rounded-md border border-[#E2D8DE] px-3 py-2 text-sm text-[#1C1A1E] outline-none focus:border-[#7B4764]"
-                        type="text"
-                        value={timezone}
-                        onChange={(event) => setTimezone(event.target.value)}
-                      />
-                    </div>
+                  {renderSchedulingFields("simple")}
+
+                  <div className="mt-4 flex flex-col gap-2">
+                    <label className="text-sm font-medium" htmlFor="timezone">
+                      Timezone
+                    </label>
+                    <input
+                      id="timezone"
+                      className="rounded-md border border-[#E2D8DE] px-3 py-2 text-sm text-[#1C1A1E] outline-none focus:border-[#7B4764]"
+                      type="text"
+                      value={timezone}
+                      onChange={(event) => setTimezone(event.target.value)}
+                    />
                   </div>
 
                   <div className="mt-4 flex flex-col gap-2">
@@ -932,6 +1033,8 @@ export default function Home() {
                   </select>
                 </div>
               </div>
+
+              {renderSchedulingFields("advanced")}
 
               <div className="mt-4 flex flex-col gap-2">
                 <label

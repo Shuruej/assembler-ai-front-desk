@@ -22,6 +22,9 @@ type CreateAgentRequestBody = {
 };
 
 const DEFAULT_BUSINESS_DAYS = "mon,tue,wed,thu,fri,sat,sun";
+const DEFAULT_BUSINESS_HOURS_START = "09:00";
+const DEFAULT_BUSINESS_HOURS_END = "18:00";
+const DEFAULT_APPOINTMENT_DURATION_MINUTES = 60;
 const DAY_CODES = ["sun", "mon", "tue", "wed", "thu", "fri", "sat"];
 
 const VALID_AGENT_PURPOSES = new Set([
@@ -68,6 +71,24 @@ function normalizeAgentPurpose(value: unknown): string {
   return trimmed;
 }
 
+function normalizeBusinessTimeString(value: unknown, fieldName: string, fallback: string): string {
+  if (value === undefined || value === null || value === "") {
+    return fallback;
+  }
+
+  if (typeof value !== "string") {
+    throw new Error(`${fieldName} must be a string when provided.`);
+  }
+
+  const trimmed = value.trim();
+
+  if (!/^([01]?\d|2[0-3]):[0-5]\d$/.test(trimmed)) {
+    throw new Error(`${fieldName} must use HH:MM format.`);
+  }
+
+  return trimmed;
+}
+
 function parseBusinessHour(value: string | null, fallback: number): number {
   if (!value) return fallback;
 
@@ -87,12 +108,19 @@ function parseBusinessTime(value: string | null, fallbackHour: number): number {
 }
 
 function normalizeAppointmentDuration(value: unknown): number {
-  return typeof value === "number" &&
-    Number.isInteger(value) &&
-    value > 0 &&
-    value <= 480
-    ? value
-    : 60;
+  if (value === undefined || value === null || value === "") {
+    return DEFAULT_APPOINTMENT_DURATION_MINUTES;
+  }
+
+  if (typeof value !== "number" || !Number.isInteger(value)) {
+    throw new Error("appointment_duration_minutes must be an integer.");
+  }
+
+  if (value <= 0 || value > 480) {
+    throw new Error("appointment_duration_minutes must be between 1 and 480.");
+  }
+
+  return value;
 }
 
 function normalizeBusinessDays(value: unknown): string {
@@ -219,13 +247,15 @@ export async function POST(request: Request) {
       body.business_knowledge,
       "business_knowledge",
     );
-    businessHoursStart = normalizeOptionalString(
+    businessHoursStart = normalizeBusinessTimeString(
       body.business_hours_start,
       "business_hours_start",
+      DEFAULT_BUSINESS_HOURS_START,
     );
-    businessHoursEnd = normalizeOptionalString(
+    businessHoursEnd = normalizeBusinessTimeString(
       body.business_hours_end,
       "business_hours_end",
+      DEFAULT_BUSINESS_HOURS_END,
     );
     businessDays = normalizeBusinessDays(body.business_days);
     appointmentDurationMinutes = normalizeAppointmentDuration(
