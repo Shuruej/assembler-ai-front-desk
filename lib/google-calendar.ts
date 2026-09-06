@@ -64,8 +64,19 @@ function normalizeBusinessHours(
     : { startHour: 9, endHour: 18 };
 }
 
+function normalizeDurationMinutes(value: number): number {
+  return Number.isInteger(value) && value > 0 && value <= 480 ? value : 60;
+}
+
 function formatTime(hour: number): string {
   return `${String(hour).padStart(2, "0")}:00`;
+}
+
+function formatTimeFromMinutes(totalMinutes: number): string {
+  const hour = Math.floor(totalMinutes / 60);
+  const minute = totalMinutes % 60;
+
+  return `${String(hour).padStart(2, "0")}:${String(minute).padStart(2, "0")}`;
 }
 
 function toUtcIso(dateISO: string, timeString: string): string {
@@ -171,6 +182,7 @@ export async function checkGoogleCalendarAvailability(
   dateISO: string,
   businessHoursStart: string,
   businessHoursEnd: string,
+  durationMinutes: number,
 ): Promise<string[]> {
   try {
     const accessToken = await getAccessTokenFromRefreshToken(refreshToken);
@@ -178,6 +190,7 @@ export async function checkGoogleCalendarAvailability(
       businessHoursStart,
       businessHoursEnd,
     );
+    const normalizedDurationMinutes = normalizeDurationMinutes(durationMinutes);
     const timeMin = toUtcIso(dateISO, formatTime(startHour));
     const timeMax = toUtcIso(dateISO, formatTime(endHour));
     const response = await fetch(GOOGLE_FREE_BUSY_URL, {
@@ -199,15 +212,26 @@ export async function checkGoogleCalendarAvailability(
     }
 
     const busyPeriods = data.calendars?.primary?.busy ?? [];
+    const startMinutes = startHour * 60;
+    const endMinutes = endHour * 60;
+    const candidateSlots = [];
 
-    return Array.from({ length: endHour - startHour }, (_value, index) => {
-      const hour = startHour + index;
-      return {
-        start: new Date(toUtcIso(dateISO, formatTime(hour))),
-        end: new Date(toUtcIso(dateISO, formatTime(hour + 1))),
-        time: formatTime(hour),
-      };
-    })
+    for (
+      let minutes = startMinutes;
+      minutes + normalizedDurationMinutes <= endMinutes;
+      minutes += normalizedDurationMinutes
+    ) {
+      const slotStart = formatTimeFromMinutes(minutes);
+      candidateSlots.push({
+        start: new Date(toUtcIso(dateISO, slotStart)),
+        end: new Date(
+          toUtcIso(dateISO, formatTimeFromMinutes(minutes + normalizedDurationMinutes)),
+        ),
+        time: slotStart,
+      });
+    }
+
+    return candidateSlots
       .filter((slot) =>
         busyPeriods.every((busyPeriod) => {
           const busyStart = new Date(busyPeriod.start);
@@ -230,6 +254,7 @@ export async function createGoogleCalendarEvent(
   refreshToken: string,
   dateISO: string,
   timeString: string,
+  durationMinutes: number,
   summary: string,
   description: string,
 ): Promise<string> {
@@ -237,7 +262,7 @@ export async function createGoogleCalendarEvent(
     const accessToken = await getAccessTokenFromRefreshToken(refreshToken);
     const start = new Date(toUtcIso(dateISO, timeString));
     const end = new Date(start);
-    end.setUTCHours(start.getUTCHours() + 1);
+    end.setUTCMinutes(start.getUTCMinutes() + normalizeDurationMinutes(durationMinutes));
     const response = await fetch(GOOGLE_EVENTS_URL, {
       method: "POST",
       headers: {

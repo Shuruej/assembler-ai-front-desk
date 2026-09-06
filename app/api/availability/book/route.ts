@@ -12,6 +12,9 @@ type BookSlotRequestBody = {
   notes?: unknown;
 };
 
+const DEFAULT_BUSINESS_DAYS = "mon,tue,wed,thu,fri,sat,sun";
+const DAY_CODES = ["sun", "mon", "tue", "wed", "thu", "fri", "sat"];
+
 function isNonEmptyString(value: unknown): value is string {
   return typeof value === "string" && value.trim().length > 0;
 }
@@ -34,6 +37,32 @@ function normalizeOptionalString(
 
 function isValidDateOnly(value: string): boolean {
   return /^\d{4}-\d{2}-\d{2}$/.test(value);
+}
+
+function getDayCode(dateISO: string): string {
+  return DAY_CODES[new Date(`${dateISO}T00:00:00`).getDay()];
+}
+
+function getBusinessDays(value: unknown): Set<string> {
+  const rawDays = typeof value === "string" && value.trim().length > 0
+    ? value
+    : DEFAULT_BUSINESS_DAYS;
+
+  return new Set(
+    rawDays
+      .split(",")
+      .map((day) => day.trim().toLowerCase())
+      .filter((day) => DAY_CODES.includes(day)),
+  );
+}
+
+function normalizeAppointmentDuration(value: unknown): number {
+  return typeof value === "number" &&
+    Number.isInteger(value) &&
+    value > 0 &&
+    value <= 480
+    ? value
+    : 60;
 }
 
 function generateBookingId(): string {
@@ -161,6 +190,7 @@ export async function POST(request: Request) {
         agent.google_refresh_token,
         slotDate,
         slotTime,
+        normalizeAppointmentDuration(agent.appointment_duration_minutes),
         `Appointment: ${customerName}`,
         [
           requestedService ? `Service: ${requestedService}` : null,
@@ -241,6 +271,13 @@ export async function POST(request: Request) {
         { status: 502 },
       );
     }
+  }
+
+  if (agent && !getBusinessDays(agent.business_days).has(getDayCode(slotDate))) {
+    return Response.json(
+      { error: "This business is closed on that day." },
+      { status: 400 },
+    );
   }
 
   const { data: lead, error } = await supabase.rpc("book_agent_slot_for_call", {

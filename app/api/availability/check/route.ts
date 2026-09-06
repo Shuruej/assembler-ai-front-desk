@@ -6,12 +6,41 @@ type CheckAvailabilityRequestBody = {
   requested_date?: unknown;
 };
 
+const DEFAULT_BUSINESS_DAYS = "mon,tue,wed,thu,fri,sat,sun";
+const DAY_CODES = ["sun", "mon", "tue", "wed", "thu", "fri", "sat"];
+
 function isNonEmptyString(value: unknown): value is string {
   return typeof value === "string" && value.trim().length > 0;
 }
 
 function isValidDateOnly(value: string): boolean {
   return /^\d{4}-\d{2}-\d{2}$/.test(value);
+}
+
+function getDayCode(dateISO: string): string {
+  return DAY_CODES[new Date(`${dateISO}T00:00:00`).getDay()];
+}
+
+function getBusinessDays(value: unknown): Set<string> {
+  const rawDays = typeof value === "string" && value.trim().length > 0
+    ? value
+    : DEFAULT_BUSINESS_DAYS;
+
+  return new Set(
+    rawDays
+      .split(",")
+      .map((day) => day.trim().toLowerCase())
+      .filter((day) => DAY_CODES.includes(day)),
+  );
+}
+
+function normalizeAppointmentDuration(value: unknown): number {
+  return typeof value === "number" &&
+    Number.isInteger(value) &&
+    value > 0 &&
+    value <= 480
+    ? value
+    : 60;
 }
 
 export async function POST(request: Request) {
@@ -61,6 +90,7 @@ export async function POST(request: Request) {
         requestedDate,
         agent.business_hours_start ?? "09:00",
         agent.business_hours_end ?? "18:00",
+        normalizeAppointmentDuration(agent.appointment_duration_minutes),
       );
 
       return Response.json({
@@ -78,6 +108,13 @@ export async function POST(request: Request) {
         { status: 502 },
       );
     }
+  }
+
+  if (agent && !getBusinessDays(agent.business_days).has(getDayCode(requestedDate))) {
+    return Response.json({
+      available_times: [],
+      source: "closed",
+    });
   }
 
   const { data: slots, error: slotsError } = await supabase

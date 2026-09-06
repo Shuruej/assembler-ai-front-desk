@@ -13,11 +13,16 @@ type CreateAgentRequestBody = {
   business_knowledge?: unknown;
   business_hours_start?: unknown;
   business_hours_end?: unknown;
+  business_days?: unknown;
+  appointment_duration_minutes?: unknown;
   timezone?: unknown;
   follow_up_preferences?: unknown;
   confirmation_call_enabled?: boolean | null;
   feedback_enabled?: boolean | null;
 };
+
+const DEFAULT_BUSINESS_DAYS = "mon,tue,wed,thu,fri,sat,sun";
+const DAY_CODES = ["sun", "mon", "tue", "wed", "thu", "fri", "sat"];
 
 const VALID_AGENT_PURPOSES = new Set([
   "general_receptionist",
@@ -72,6 +77,50 @@ function parseBusinessHour(value: string | null, fallback: number): number {
   return Number(match[1]);
 }
 
+function parseBusinessTime(value: string | null, fallbackHour: number): number {
+  if (!value) return fallbackHour * 60;
+
+  const match = value.trim().match(/^([01]?\d|2[0-3])(?::([0-5]\d))?$/);
+  if (!match) return fallbackHour * 60;
+
+  return Number(match[1]) * 60 + Number(match[2] ?? "0");
+}
+
+function normalizeAppointmentDuration(value: unknown): number {
+  return typeof value === "number" &&
+    Number.isInteger(value) &&
+    value > 0 &&
+    value <= 480
+    ? value
+    : 60;
+}
+
+function normalizeBusinessDays(value: unknown): string {
+  if (typeof value !== "string" || value.trim().length === 0) {
+    return DEFAULT_BUSINESS_DAYS;
+  }
+
+  const validDays = value
+    .split(",")
+    .map((day) => day.trim().toLowerCase())
+    .filter((day) => DAY_CODES.includes(day));
+
+  return validDays.length > 0
+    ? Array.from(new Set(validDays)).join(",")
+    : DEFAULT_BUSINESS_DAYS;
+}
+
+function getDayCode(date: Date): string {
+  return DAY_CODES[date.getDay()];
+}
+
+function formatSlotTime(totalMinutes: number): string {
+  const hour = Math.floor(totalMinutes / 60);
+  const minute = totalMinutes % 60;
+
+  return `${String(hour).padStart(2, "0")}:${String(minute).padStart(2, "0")}`;
+}
+
 function formatSlotDate(date: Date): string {
   const year = date.getFullYear();
   const month = String(date.getMonth() + 1).padStart(2, "0");
@@ -84,11 +133,14 @@ function buildInitialAgentSlots(
   agentId: string,
   businessHoursStart: string | null,
   businessHoursEnd: string | null,
+  businessDays: string,
+  appointmentDurationMinutes: number,
 ) {
-  const startHour = parseBusinessHour(businessHoursStart, 9);
-  const endHour = parseBusinessHour(businessHoursEnd, 18);
-  const normalizedStartHour = startHour < endHour ? startHour : 9;
-  const normalizedEndHour = startHour < endHour ? endHour : 18;
+  const startMinutes = parseBusinessTime(businessHoursStart, 9);
+  const endMinutes = parseBusinessTime(businessHoursEnd, 18);
+  const normalizedStartMinutes = startMinutes < endMinutes ? startMinutes : 9 * 60;
+  const normalizedEndMinutes = startMinutes < endMinutes ? endMinutes : 18 * 60;
+  const openDays = new Set(businessDays.split(",").map((day) => day.trim()));
   const today = new Date();
   const slots: {
     agent_id: string;
@@ -100,11 +152,19 @@ function buildInitialAgentSlots(
     const slotDate = new Date(today);
     slotDate.setDate(today.getDate() + dayOffset);
 
-    for (let hour = normalizedStartHour; hour < normalizedEndHour; hour += 1) {
+    if (!openDays.has(getDayCode(slotDate))) {
+      continue;
+    }
+
+    for (
+      let minutes = normalizedStartMinutes;
+      minutes + appointmentDurationMinutes <= normalizedEndMinutes;
+      minutes += appointmentDurationMinutes
+    ) {
       slots.push({
         agent_id: agentId,
         slot_date: formatSlotDate(slotDate),
-        slot_time: `${String(hour).padStart(2, "0")}:00`,
+        slot_time: formatSlotTime(minutes),
       });
     }
   }
@@ -148,6 +208,8 @@ export async function POST(request: Request) {
   let businessKnowledge: string | null;
   let businessHoursStart: string | null;
   let businessHoursEnd: string | null;
+  let businessDays: string;
+  let appointmentDurationMinutes: number;
   let timezone: string | null;
 
   try {
@@ -164,6 +226,10 @@ export async function POST(request: Request) {
     businessHoursEnd = normalizeOptionalString(
       body.business_hours_end,
       "business_hours_end",
+    );
+    businessDays = normalizeBusinessDays(body.business_days);
+    appointmentDurationMinutes = normalizeAppointmentDuration(
+      body.appointment_duration_minutes,
     );
     timezone = normalizeOptionalString(body.timezone, "timezone");
   } catch (error) {
@@ -217,6 +283,8 @@ export async function POST(request: Request) {
         business_knowledge: businessKnowledge,
         business_hours_start: businessHoursStart,
         business_hours_end: businessHoursEnd,
+        business_days: businessDays,
+        appointment_duration_minutes: appointmentDurationMinutes,
         timezone,
         assemblyai_agent_id: assemblyAIAgent.id,
         ...preferences,
@@ -233,6 +301,8 @@ export async function POST(request: Request) {
         agent.id,
         businessHoursStart,
         businessHoursEnd,
+        businessDays,
+        appointmentDurationMinutes,
       );
 
       if (slots.length > 0) {
