@@ -1,4 +1,5 @@
 import { createSupabaseServiceRoleClient } from "@/lib/supabase/server";
+import { logSimulatedSms } from "@/lib/sms";
 
 type BookSlotRequestBody = {
   call_id?: unknown;
@@ -127,6 +128,26 @@ export async function POST(request: Request) {
     }
 
     return Response.json({ error: error.message }, { status: 500 });
+  }
+
+  const { data: call, error: callLookupError } = await supabase
+    .from("calls")
+    .select("agent_id")
+    .eq("id", callId)
+    .single();
+
+  if (callLookupError) {
+    console.error("Failed to resolve call for simulated SMS.", callLookupError);
+  }
+
+  if (call?.agent_id) {
+    await logSimulatedSms({
+      agentId: call.agent_id,
+      leadId: lead.id,
+      toNumber: lead.phone_number,
+      purpose: "booking_confirmation",
+      message: `Hi ${lead.customer_name ?? "there"}, your appointment is confirmed for ${lead.confirmed_date} at ${lead.confirmed_time}. Booking ID: ${lead.booking_id}.`,
+    });
   }
 
   return Response.json(lead);

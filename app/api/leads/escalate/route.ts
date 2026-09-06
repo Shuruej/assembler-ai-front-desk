@@ -1,4 +1,5 @@
 import { createSupabaseServiceRoleClient } from "@/lib/supabase/server";
+import { logSimulatedSms } from "@/lib/sms";
 
 type EscalateLeadRequestBody = {
   call_id?: unknown;
@@ -40,6 +41,42 @@ function mergeEscalationNotes(
   return newValue && existingNotes
     ? `${existingNotes}\n\nEscalation: ${newValue}`
     : newValue ?? existingNotes;
+}
+
+async function logEscalationAlert({
+  supabase,
+  callId,
+  lead,
+  reason,
+}: {
+  supabase: ReturnType<typeof createSupabaseServiceRoleClient>;
+  callId: string;
+  lead: {
+    id: string;
+    customer_name: string | null;
+    phone_number: string | null;
+  };
+  reason: string;
+}) {
+  const { data: call, error } = await supabase
+    .from("calls")
+    .select("agent_id")
+    .eq("id", callId)
+    .single();
+
+  if (error) {
+    console.error("Failed to resolve call for simulated SMS.", error);
+  }
+
+  if (call?.agent_id) {
+    await logSimulatedSms({
+      agentId: call.agent_id,
+      leadId: lead.id,
+      toNumber: null,
+      purpose: "escalation_alert",
+      message: `Escalation: ${reason}. Caller: ${lead.customer_name ?? "Unknown"}, ${lead.phone_number ?? "No phone number"}.`,
+    });
+  }
 }
 
 export async function POST(request: Request) {
@@ -107,6 +144,8 @@ export async function POST(request: Request) {
       return Response.json({ error: updateError.message }, { status: 500 });
     }
 
+    await logEscalationAlert({ supabase, callId, lead, reason });
+
     return Response.json(lead);
   }
 
@@ -129,6 +168,8 @@ export async function POST(request: Request) {
   if (insertError) {
     return Response.json({ error: insertError.message }, { status: 500 });
   }
+
+  await logEscalationAlert({ supabase, callId, lead, reason });
 
   return Response.json(lead, { status: 201 });
 }

@@ -1,5 +1,6 @@
 import { createSupabaseServiceRoleClient } from "@/lib/supabase/server";
 import { normalizeAgentFollowUpPreferences } from "@/lib/follow-up-preferences";
+import { logSimulatedSms } from "@/lib/sms";
 
 type FeedbackRequestBody = {
   feedback_rating?: unknown;
@@ -100,6 +101,27 @@ export async function POST(
       { error: error?.message ?? "Lead not found." },
       { status: error ? 500 : 404 },
     );
+  }
+
+  if (agent.id && feedbackRating <= 2) {
+    await logSimulatedSms({
+      agentId: agent.id,
+      leadId: lead.id,
+      toNumber: null,
+      purpose: "feedback_alert",
+      message: `Low satisfaction rating (${feedbackRating}/5) reported. Notes: ${feedbackNotes ?? "No notes provided"}.`,
+    });
+  }
+
+  if (agent.id && feedbackRating >= 4) {
+    await logSimulatedSms({
+      agentId: agent.id,
+      leadId: lead.id,
+      toNumber: lead.phone_number,
+      purpose: "review_request",
+      message:
+        "Thanks for the great feedback! We'd love a quick review: [review link placeholder].",
+    });
   }
 
   return Response.json(lead);

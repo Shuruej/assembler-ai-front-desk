@@ -1,4 +1,5 @@
 import { createSupabaseServiceRoleClient } from "@/lib/supabase/server";
+import { logSimulatedSms } from "@/lib/sms";
 
 type ConfirmLeadRequestBody = {
   confirmed_date?: unknown;
@@ -83,7 +84,7 @@ export async function POST(
   const supabase = createSupabaseServiceRoleClient();
   const { data: existingLead, error: lookupError } = await supabase
     .from("leads")
-    .select("booking_id, notes")
+    .select("booking_id, notes, calls (agent_id)")
     .eq("id", id)
     .single();
 
@@ -113,6 +114,21 @@ export async function POST(
 
   if (updateError) {
     return Response.json({ error: updateError.message }, { status: 500 });
+  }
+
+  const call = Array.isArray(existingLead.calls)
+    ? existingLead.calls[0]
+    : existingLead.calls;
+  const agentId = call?.agent_id;
+
+  if (agentId) {
+    await logSimulatedSms({
+      agentId,
+      leadId: lead.id,
+      toNumber: lead.phone_number,
+      purpose: "booking_confirmation",
+      message: `Hi ${lead.customer_name ?? "there"}, your appointment is confirmed for ${lead.confirmed_date} at ${lead.confirmed_time}. Booking ID: ${lead.booking_id}.`,
+    });
   }
 
   return Response.json(lead);

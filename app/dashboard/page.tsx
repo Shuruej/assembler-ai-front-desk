@@ -46,6 +46,16 @@ type Lead = {
   escalation_reason: string | null;
 };
 
+type SmsLog = {
+  id: string;
+  agent_id: string;
+  lead_id: string | null;
+  to_number: string | null;
+  purpose: string;
+  message: string;
+  created_at: string | null;
+};
+
 type LifecycleStageState = "completed" | "active" | "pending" | "failed" | "off";
 
 type LifecycleStage = {
@@ -134,6 +144,10 @@ function formatStatusLabel(value: string | null): string {
 }
 
 function formatPurpose(value: string | null): string {
+  return displayValue(value).replaceAll("_", " ");
+}
+
+function formatSmsPurpose(value: string | null): string {
   return displayValue(value).replaceAll("_", " ");
 }
 
@@ -344,6 +358,7 @@ export default function DashboardPage() {
   const [selectedAgentId, setSelectedAgentId] = useState<string | null>(null);
   const [calls, setCalls] = useState<Call[]>([]);
   const [leads, setLeads] = useState<Lead[]>([]);
+  const [smsLogs, setSmsLogs] = useState<SmsLog[]>([]);
   const [expandedCallIds, setExpandedCallIds] = useState<Set<string>>(
     () => new Set(),
   );
@@ -459,15 +474,17 @@ export default function DashboardPage() {
       setExpandedCallIds(new Set());
 
       try {
-        const [callsData, leadsData, agentsData] = await Promise.all([
+        const [callsData, leadsData, smsLogsData, agentsData] = await Promise.all([
           fetchJson<Call[]>(`/api/agents/${selectedAgentId}/calls`),
           fetchJson<Lead[]>(`/api/agents/${selectedAgentId}/leads`),
+          fetchJson<SmsLog[]>(`/api/agents/${selectedAgentId}/sms-logs`),
           fetchJson<Agent[]>("/api/agents"),
         ]);
 
         if (!ignore) {
           setCalls(callsData);
           setLeads(leadsData);
+          setSmsLogs(smsLogsData);
           setAgents(agentsData);
         }
       } catch (err) {
@@ -690,6 +707,53 @@ export default function DashboardPage() {
                       </p>
                     </div>
                   ))}
+                </section>
+
+                <section className="min-w-0 rounded-lg border border-zinc-200 bg-white p-4">
+                  <div className="flex items-center justify-between gap-4">
+                    <div>
+                      <h2 className="text-sm font-semibold uppercase tracking-wide text-zinc-500">
+                        Notifications (Simulated)
+                      </h2>
+                      <p className="mt-1 text-xs text-zinc-500">
+                        Ready for Twilio integration
+                      </p>
+                    </div>
+                    {isLoadingDetails ? (
+                      <span className="text-sm text-zinc-500">Loading...</span>
+                    ) : null}
+                  </div>
+
+                  <div className="mt-4">
+                    {smsLogs.length === 0 ? (
+                      <p className="text-sm text-zinc-500">
+                        No simulated notifications logged for this agent yet.
+                      </p>
+                    ) : (
+                      <div className="divide-y divide-zinc-100 rounded-md border border-zinc-200">
+                        {smsLogs.map((smsLog) => (
+                          <div className="p-3" key={smsLog.id}>
+                            <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+                              <div>
+                                <div className="text-sm font-semibold capitalize text-zinc-900">
+                                  {formatSmsPurpose(smsLog.purpose)}
+                                </div>
+                                <p className="mt-1 text-xs text-zinc-500">
+                                  To: {smsLog.to_number ?? "Internal"}
+                                </p>
+                              </div>
+                              <div className="text-xs text-zinc-500">
+                                {formatDate(smsLog.created_at)}
+                              </div>
+                            </div>
+                            <p className="mt-3 whitespace-pre-wrap text-sm text-zinc-700">
+                              {smsLog.message}
+                            </p>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
                 </section>
 
                 <section className="min-w-0 rounded-lg border border-zinc-200 bg-white p-4">
