@@ -311,7 +311,17 @@ function DemoPageContent() {
   }
 
   async function handleToolCall(message: VoiceAgentMessage) {
-    if (message.name !== "capture_lead") return;
+    const supportedToolNames = new Set([
+      "capture_lead",
+      "escalate_to_human",
+      "check_availability",
+      "book_slot",
+    ]);
+
+    if (!message.name || !supportedToolNames.has(message.name)) return;
+    const isEscalation = message.name === "escalate_to_human";
+    const isAvailabilityCheck = message.name === "check_availability";
+    const isSlotBooking = message.name === "book_slot";
 
     const ws = wsRef.current;
     if (!message.call_id || !ws || stopRequestedRef.current) return;
@@ -327,29 +337,60 @@ function DemoPageContent() {
       resultPayload = { success: false, error: "No active call on record." };
     } else {
       try {
-        const response = await fetch("/api/leads", {
+        const endpoint = isEscalation
+          ? "/api/leads/escalate"
+          : isAvailabilityCheck
+            ? "/api/availability/check"
+            : isSlotBooking
+              ? "/api/availability/book"
+              : "/api/leads";
+        const response = await fetch(endpoint, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             call_id: dbCallId,
-            customer_name: args.customer_name,
-            phone_number: args.phone_number,
-            requested_service: args.requested_service,
-            preferred_datetime: args.preferred_datetime,
+            ...(isAvailabilityCheck
+              ? { requested_date: args.requested_date }
+              : {
+                  customer_name: args.customer_name,
+                  phone_number: args.phone_number,
+                }),
+            ...(isEscalation ? { reason: args.reason } : {}),
+            ...(isSlotBooking
+              ? { slot_date: args.slot_date, slot_time: args.slot_time }
+              : {}),
+            ...(!isEscalation && !isAvailabilityCheck && !isSlotBooking
+              ? {
+                  requested_service: args.requested_service,
+                  preferred_datetime: args.preferred_datetime,
+                }
+              : {}),
+            ...(isSlotBooking
+              ? { requested_service: args.requested_service }
+              : {}),
             notes: args.notes,
           }),
         });
         const data = await response.json();
 
         if (!response.ok) {
-          resultPayload = { success: false, error: data.error ?? "Failed to save lead." };
+          resultPayload = { success: false, error: data.error ?? "Tool request failed." };
         } else {
-          resultPayload = { success: true, lead_id: data.id };
-          addTranscript({
-            id: `system-lead-${Date.now()}`,
-            role: "system",
-            text: "Lead captured and saved.",
-          });
+          resultPayload = isAvailabilityCheck
+            ? { success: true, available_times: data.available_times ?? [] }
+            : { success: true, lead_id: data.id, booking_id: data.booking_id };
+
+          if (!isAvailabilityCheck) {
+            addTranscript({
+              id: `system-lead-${Date.now()}`,
+              role: "system",
+              text: isEscalation
+                ? "Escalated to human team."
+                : isSlotBooking
+                  ? "Slot booked."
+                  : "Lead captured and saved.",
+            });
+          }
         }
       } catch (err) {
         resultPayload = {
@@ -493,9 +534,6 @@ function DemoPageContent() {
             type: "session.update",
             session: {
               agent_id: tokenData.agent_id ?? trimmedAgentId,
-              ...(sessionPromptRef.current
-                ? { system_prompt: sessionPromptRef.current }
-                : {}),
             },
           }),
         );
@@ -505,6 +543,16 @@ function DemoPageContent() {
         const message = JSON.parse(event.data as string) as VoiceAgentMessage;
 
         if (message.type === "session.ready") {
+          // agent_id cannot be combined with overrides in one session.update.
+          // Apply the runtime prompt after initialization, before streaming audio.
+          if (sessionPromptRef.current) {
+            ws.send(
+              JSON.stringify({
+                type: "session.update",
+                session: { system_prompt: sessionPromptRef.current },
+              }),
+            );
+          }
           readyRef.current = true;
           resetInactivityTimer();
           setStatus(`Connected: ${message.session_id}`);

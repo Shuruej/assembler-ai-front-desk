@@ -70,6 +70,15 @@ const TOOL_DESCRIPTIONS: Record<string, string> = {
     "Capture a feedback follow-up lead after explicit read-back confirmation when feedback should be logged for staff, includes a requested response, or requires escalation.",
 };
 
+const ESCALATE_TO_HUMAN_TOOL_DESCRIPTION =
+  "Call this when the caller has a question or need you cannot address, seems frustrated, or is asking something outside normal booking/inquiry scope. This flags the call for a real team member to follow up.";
+
+const CHECK_AVAILABILITY_TOOL_DESCRIPTION =
+  "Call this whenever the caller mentions a preferred date for a booking, before promising any specific time. Returns the actual open time slots for that date.";
+
+const BOOK_SLOT_TOOL_DESCRIPTION =
+  "Call this once the caller has picked one of the available times from check_availability and explicitly confirmed it. This finalizes the booking.";
+
 function requireAssemblyAIApiKey(): string {
   const apiKey = process.env.ASSEMBLYAI_API_KEY;
 
@@ -169,6 +178,10 @@ export function buildSystemPrompt({
       ? `Use this business knowledge as your primary source for business-specific answers: ${knowledge}`
       : "No detailed business knowledge was provided, so ask concise clarifying questions and do not invent business-specific details.",
     "Do not invent business-specific details, policies, prices, availability, or commitments that are not in the provided business knowledge or clearly supplied by the caller.",
+    "If you cannot help with something, or the caller seems frustrated or asks something clearly outside what you can handle, call escalate_to_human — do not guess or make up an answer. Let the caller know a team member will follow up with them.",
+    "When the caller wants to book something and mentions or is asked for a preferred date, call check_availability with that date before offering or promising any specific time. Only offer the exact times returned by the tool result — never invent availability.",
+    "If no times are available for that date, apologize, ask if another day works, and call check_availability again for the new date.",
+    "Once the caller picks a specific time from the options given and explicitly confirms it (per the mandatory confirmation protocol), call book_slot with the exact date, time, and their name/phone number.",
     buildFollowUpInstruction({ confirmationCallEnabled, feedbackEnabled }),
     "Track the details the caller has already clearly provided in this conversation and reuse them; never ask again for information they have already given.",
     `Tool use guidance for capture_lead: ${TOOL_DESCRIPTIONS[normalizedPurpose]}`,
@@ -257,6 +270,86 @@ export async function createAssemblyAIAgent({
               },
             },
             required: ["customer_name", "phone_number"],
+          },
+        },
+        {
+          type: "function",
+          name: "escalate_to_human",
+          description: ESCALATE_TO_HUMAN_TOOL_DESCRIPTION,
+          parameters: {
+            type: "object",
+            properties: {
+              reason: {
+                type: "string",
+                description: "Brief description of why escalation is needed.",
+              },
+              customer_name: {
+                type: "string",
+                description: "The caller's name, if known.",
+              },
+              phone_number: {
+                type: "string",
+                description: "The caller's phone number, if known.",
+              },
+              notes: {
+                type: "string",
+                description:
+                  "Any useful context for the human team member who follows up.",
+              },
+            },
+            required: ["reason"],
+          },
+        },
+        {
+          type: "function",
+          name: "check_availability",
+          description: CHECK_AVAILABILITY_TOOL_DESCRIPTION,
+          parameters: {
+            type: "object",
+            properties: {
+              requested_date: {
+                type: "string",
+                description: "Preferred booking date in YYYY-MM-DD format.",
+              },
+            },
+            required: ["requested_date"],
+          },
+        },
+        {
+          type: "function",
+          name: "book_slot",
+          description: BOOK_SLOT_TOOL_DESCRIPTION,
+          parameters: {
+            type: "object",
+            properties: {
+              slot_date: {
+                type: "string",
+                description: "Booking date in YYYY-MM-DD format.",
+              },
+              slot_time: {
+                type: "string",
+                description: "Exact time matching one returned by check_availability.",
+              },
+              customer_name: {
+                type: "string",
+                description: "The caller's name.",
+              },
+              phone_number: {
+                type: "string",
+                description:
+                  "The caller's phone number, preferably including country code if available.",
+              },
+              requested_service: {
+                type: "string",
+                description: "The requested service, booking, or appointment type.",
+              },
+              notes: {
+                type: "string",
+                description:
+                  "Any useful context, constraints, or booking notes from the conversation.",
+              },
+            },
+            required: ["slot_date", "slot_time", "customer_name", "phone_number"],
           },
         },
       ],

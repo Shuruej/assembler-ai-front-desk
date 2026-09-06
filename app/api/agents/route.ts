@@ -63,6 +63,55 @@ function normalizeAgentPurpose(value: unknown): string {
   return trimmed;
 }
 
+function parseBusinessHour(value: string | null, fallback: number): number {
+  if (!value) return fallback;
+
+  const match = value.trim().match(/^([01]?\d|2[0-3])(?::[0-5]\d)?$/);
+  if (!match) return fallback;
+
+  return Number(match[1]);
+}
+
+function formatSlotDate(date: Date): string {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+
+  return `${year}-${month}-${day}`;
+}
+
+function buildInitialAgentSlots(
+  agentId: string,
+  businessHoursStart: string | null,
+  businessHoursEnd: string | null,
+) {
+  const startHour = parseBusinessHour(businessHoursStart, 9);
+  const endHour = parseBusinessHour(businessHoursEnd, 18);
+  const normalizedStartHour = startHour < endHour ? startHour : 9;
+  const normalizedEndHour = startHour < endHour ? endHour : 18;
+  const today = new Date();
+  const slots: {
+    agent_id: string;
+    slot_date: string;
+    slot_time: string;
+  }[] = [];
+
+  for (let dayOffset = 0; dayOffset < 7; dayOffset += 1) {
+    const slotDate = new Date(today);
+    slotDate.setDate(today.getDate() + dayOffset);
+
+    for (let hour = normalizedStartHour; hour < normalizedEndHour; hour += 1) {
+      slots.push({
+        agent_id: agentId,
+        slot_date: formatSlotDate(slotDate),
+        slot_time: `${String(hour).padStart(2, "0")}:00`,
+      });
+    }
+  }
+
+  return slots;
+}
+
 export async function GET() {
   const supabase = createSupabaseServiceRoleClient();
   const { data: agents, error } = await supabase
@@ -177,6 +226,24 @@ export async function POST(request: Request) {
 
     if (error) {
       return Response.json({ error: error.message }, { status: 500 });
+    }
+
+    try {
+      const slots = buildInitialAgentSlots(
+        agent.id,
+        businessHoursStart,
+        businessHoursEnd,
+      );
+
+      if (slots.length > 0) {
+        const { error: slotError } = await supabase.from("agent_slots").insert(slots);
+
+        if (slotError) {
+          console.error("Failed to create initial agent slots.", slotError);
+        }
+      }
+    } catch (slotError) {
+      console.error("Failed to create initial agent slots.", slotError);
     }
 
     return Response.json(agent, { status: 201 });

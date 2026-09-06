@@ -42,6 +42,8 @@ type Lead = {
   feedback_rating: number | null;
   feedback_notes: string | null;
   is_spam: boolean | null;
+  needs_human: boolean;
+  escalation_reason: string | null;
 };
 
 type LifecycleStageState = "completed" | "active" | "pending" | "failed" | "off";
@@ -837,6 +839,21 @@ export default function DashboardPage() {
                             <tr key={lead.id} className="align-top">
                               <td className="py-3 pr-4 text-zinc-700">
                                 {displayValue(lead.customer_name)}
+                                {lead.needs_human ? (
+                                  <div className="mt-1">
+                                    <span
+                                      className="inline-flex rounded-full bg-orange-100 px-2 py-0.5 text-xs font-semibold text-orange-800"
+                                      title={lead.escalation_reason ?? undefined}
+                                    >
+                                      Needs Human
+                                    </span>
+                                    {lead.escalation_reason ? (
+                                      <p className="mt-1 max-w-60 text-xs text-orange-800">
+                                        {lead.escalation_reason}
+                                      </p>
+                                    ) : null}
+                                  </div>
+                                ) : null}
                               </td>
                               <td className="py-3 pr-4 text-zinc-700">
                                 {displayValue(lead.phone_number)}
