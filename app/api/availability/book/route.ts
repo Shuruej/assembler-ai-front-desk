@@ -1,4 +1,5 @@
 import { createSupabaseServiceRoleClient } from "@/lib/supabase/server";
+import { createGoogleCalendarEvent } from "@/lib/google-calendar";
 import { logSimulatedSms } from "@/lib/sms";
 
 type BookSlotRequestBody = {
@@ -44,6 +45,43 @@ function generateBookingId(): string {
   }
 
   return bookingId;
+}
+
+function mergeBookingNotes(
+  existingValue: string | null,
+  newValue: string | null,
+): string | null {
+  const existingNotes =
+    typeof existingValue === "string" && existingValue.trim().length > 0
+      ? existingValue.trim()
+      : null;
+
+  return newValue && existingNotes
+    ? `${existingNotes}\n\nBooking: ${newValue}`
+    : newValue ?? existingNotes;
+}
+
+async function logBookingConfirmationSms({
+  agentId,
+  lead,
+}: {
+  agentId: string;
+  lead: {
+    id: string;
+    customer_name: string | null;
+    phone_number: string | null;
+    confirmed_date: string | null;
+    confirmed_time: string | null;
+    booking_id: string | null;
+  };
+}) {
+  await logSimulatedSms({
+    agentId,
+    leadId: lead.id,
+    toNumber: lead.phone_number,
+    purpose: "booking_confirmation",
+    message: `Hi ${lead.customer_name ?? "there"}, your appointment is confirmed for ${lead.confirmed_date} at ${lead.confirmed_time}. Booking ID: ${lead.booking_id}.`,
+  });
 }
 
 export async function POST(request: Request) {
@@ -104,6 +142,107 @@ export async function POST(request: Request) {
   }
 
   const supabase = createSupabaseServiceRoleClient();
+  const { data: call, error: callLookupError } = await supabase
+    .from("calls")
+    .select("agent_id, agents (*)")
+    .eq("id", callId)
+    .single();
+
+  if (callLookupError || !call) {
+    return Response.json({ error: "Call not found." }, { status: 404 });
+  }
+
+  const agent = Array.isArray(call.agents) ? call.agents[0] : call.agents;
+
+  if (agent?.google_calendar_connected && agent.google_refresh_token) {
+    try {
+      const bookingId = generateBookingId();
+      const googleEventId = await createGoogleCalendarEvent(
+        agent.google_refresh_token,
+        slotDate,
+        slotTime,
+        `Appointment: ${customerName}`,
+        [
+          requestedService ? `Service: ${requestedService}` : null,
+          notes ? `Notes: ${notes}` : null,
+        ].filter(Boolean).join("\n\n"),
+      );
+      const { data: existingLead, error: leadLookupError } = await supabase
+        .from("leads")
+        .select("*")
+        .eq("call_id", callId)
+        .order("created_at", { ascending: true })
+        .limit(1)
+        .maybeSingle();
+
+      if (leadLookupError) {
+        return Response.json({ error: leadLookupError.message }, { status: 500 });
+      }
+
+      const nextNotes = mergeBookingNotes(existingLead?.notes ?? null, notes);
+      const leadWrite = existingLead
+        ? await supabase
+            .from("leads")
+            .update({
+              customer_name: existingLead.customer_name ?? customerName,
+              phone_number: existingLead.phone_number ?? phoneNumber,
+              requested_service: existingLead.requested_service ?? requestedService,
+              booking_id: existingLead.booking_id ?? bookingId,
+              confirmed_date: slotDate,
+              confirmed_time: slotTime,
+              confirmation_status: "confirmed",
+              status: "confirmed",
+              notes: nextNotes,
+              google_event_id: googleEventId,
+            })
+            .eq("id", existingLead.id)
+            .select()
+            .single()
+        : await supabase
+            .from("leads")
+            .insert({
+              call_id: callId,
+              customer_name: customerName,
+              phone_number: phoneNumber,
+              requested_service: requestedService,
+              is_spam: false,
+              status: "new",
+              booking_id: bookingId,
+              confirmed_date: slotDate,
+              confirmed_time: slotTime,
+              confirmation_status: "confirmed",
+              notes,
+              google_event_id: googleEventId,
+            })
+            .select()
+            .single();
+
+      if (leadWrite.error || !leadWrite.data) {
+        return Response.json(
+          { error: leadWrite.error?.message ?? "Failed to save lead." },
+          { status: 500 },
+        );
+      }
+
+      await logBookingConfirmationSms({
+        agentId: call.agent_id,
+        lead: leadWrite.data,
+      });
+
+      return Response.json(leadWrite.data);
+    } catch (error) {
+      return Response.json(
+        {
+          error:
+            error instanceof Error
+              ? error.message
+              : "Google Calendar booking failed.",
+        },
+        { status: 502 },
+      );
+    }
+  }
+
   const { data: lead, error } = await supabase.rpc("book_agent_slot_for_call", {
     p_call_id: callId,
     p_slot_date: slotDate,
@@ -130,23 +269,10 @@ export async function POST(request: Request) {
     return Response.json({ error: error.message }, { status: 500 });
   }
 
-  const { data: call, error: callLookupError } = await supabase
-    .from("calls")
-    .select("agent_id")
-    .eq("id", callId)
-    .single();
-
-  if (callLookupError) {
-    console.error("Failed to resolve call for simulated SMS.", callLookupError);
-  }
-
-  if (call?.agent_id) {
-    await logSimulatedSms({
+  if (call.agent_id) {
+    await logBookingConfirmationSms({
       agentId: call.agent_id,
-      leadId: lead.id,
-      toNumber: lead.phone_number,
-      purpose: "booking_confirmation",
-      message: `Hi ${lead.customer_name ?? "there"}, your appointment is confirmed for ${lead.confirmed_date} at ${lead.confirmed_time}. Booking ID: ${lead.booking_id}.`,
+      lead,
     });
   }
 

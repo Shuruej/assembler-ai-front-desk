@@ -1,4 +1,5 @@
 import { createSupabaseServiceRoleClient } from "@/lib/supabase/server";
+import { checkGoogleCalendarAvailability } from "@/lib/google-calendar";
 
 type CheckAvailabilityRequestBody = {
   call_id?: unknown;
@@ -43,12 +44,40 @@ export async function POST(request: Request) {
   const supabase = createSupabaseServiceRoleClient();
   const { data: call, error: callError } = await supabase
     .from("calls")
-    .select("agent_id")
+    .select("agent_id, agents (*)")
     .eq("id", callId)
     .single();
 
   if (callError || !call) {
     return Response.json({ error: "Call not found." }, { status: 404 });
+  }
+
+  const agent = Array.isArray(call.agents) ? call.agents[0] : call.agents;
+
+  if (agent?.google_calendar_connected && agent.google_refresh_token) {
+    try {
+      const availableTimes = await checkGoogleCalendarAvailability(
+        agent.google_refresh_token,
+        requestedDate,
+        agent.business_hours_start ?? "09:00",
+        agent.business_hours_end ?? "18:00",
+      );
+
+      return Response.json({
+        available_times: availableTimes,
+        source: "google_calendar",
+      });
+    } catch (error) {
+      return Response.json(
+        {
+          error:
+            error instanceof Error
+              ? error.message
+              : "Google Calendar availability check failed.",
+        },
+        { status: 502 },
+      );
+    }
   }
 
   const { data: slots, error: slotsError } = await supabase
@@ -65,5 +94,6 @@ export async function POST(request: Request) {
 
   return Response.json({
     available_times: (slots ?? []).map((slot) => slot.slot_time),
+    source: "internal",
   });
 }

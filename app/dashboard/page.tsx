@@ -7,6 +7,7 @@ import type { AgentFollowUpPreferences } from "@/lib/follow-up-preferences";
 type Agent = {
   confirmation_call_enabled?: boolean | null;
   feedback_enabled?: boolean | null;
+  google_calendar_connected?: boolean | null;
   id: string;
   business_name: string | null;
   industry: string | null;
@@ -672,14 +673,28 @@ export default function DashboardPage() {
                         </div>
                       </div>
                     </div>
-                    {selectedAgent.assemblyai_agent_id ? (
-                      <Link
-                        className="inline-flex w-fit rounded-md bg-zinc-950 px-4 py-2 text-sm font-medium text-white"
-                        href={getDemoHref(selectedAgent.assemblyai_agent_id)}
-                      >
-                        Test this agent
-                      </Link>
-                    ) : null}
+                    <div className="flex flex-col gap-2 sm:items-end">
+                      {selectedAgent.google_calendar_connected ? (
+                        <span className="inline-flex w-fit rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1 text-xs font-semibold text-emerald-700">
+                          Google Calendar connected
+                        </span>
+                      ) : (
+                        <a
+                          className="inline-flex w-fit rounded-md border border-zinc-300 bg-white px-4 py-2 text-sm font-medium text-zinc-700 hover:bg-zinc-100"
+                          href={`/api/agents/${selectedAgent.id}/google-calendar/connect`}
+                        >
+                          Connect Google Calendar
+                        </a>
+                      )}
+                      {selectedAgent.assemblyai_agent_id ? (
+                        <Link
+                          className="inline-flex w-fit rounded-md bg-zinc-950 px-4 py-2 text-sm font-medium text-white"
+                          href={getDemoHref(selectedAgent.assemblyai_agent_id)}
+                        >
+                          Test this agent
+                        </Link>
+                      ) : null}
+                    </div>
                   </div>
                 </section>
 
