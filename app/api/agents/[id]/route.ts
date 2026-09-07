@@ -224,6 +224,7 @@ export async function PUT(
       businessKnowledge,
       businessHoursStart,
       businessHoursEnd,
+      businessDays,
       timezone: existingAgent.timezone,
       confirmationCallEnabled: existingAgent.confirmation_call_enabled,
       feedbackEnabled: existingAgent.feedback_enabled,

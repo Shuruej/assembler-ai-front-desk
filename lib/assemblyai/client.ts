@@ -8,6 +8,7 @@ export type CreateAssemblyAIAgentInput = {
   businessKnowledge?: string | null;
   businessHoursStart?: string | null;
   businessHoursEnd?: string | null;
+  businessDays?: string | null;
   timezone?: string | null;
   confirmationCallEnabled?: boolean | null;
   feedbackEnabled?: boolean | null;
@@ -98,6 +99,18 @@ const CHECK_AVAILABILITY_TOOL_DESCRIPTION =
 const BOOK_SLOT_TOOL_DESCRIPTION =
   "Call this once the caller has picked one of the available times from check_availability and explicitly confirmed it. This finalizes the booking.";
 
+const DAY_LABELS: Record<string, string> = {
+  mon: "Monday",
+  tue: "Tuesday",
+  wed: "Wednesday",
+  thu: "Thursday",
+  fri: "Friday",
+  sat: "Saturday",
+  sun: "Sunday",
+};
+
+const DEFAULT_BUSINESS_DAYS = "mon,tue,wed,thu,fri,sat,sun";
+
 function requireAssemblyAIApiKey(): string {
   const apiKey = process.env.ASSEMBLYAI_API_KEY;
 
@@ -143,6 +156,32 @@ function formatCurrentLocalDateTime(timezone?: string | null): string {
   }).format(new Date());
 }
 
+function formatBusinessDaysForPrompt(businessDays?: string | null): string {
+  const dayLabels = (businessDays?.trim() || DEFAULT_BUSINESS_DAYS)
+    .split(",")
+    .map((day) => day.trim().toLowerCase())
+    .filter((day) => DAY_LABELS[day])
+    .map((day) => DAY_LABELS[day]);
+
+  const uniqueDayLabels = Array.from(new Set(dayLabels));
+
+  if (uniqueDayLabels.length === 0) {
+    return formatBusinessDaysForPrompt(DEFAULT_BUSINESS_DAYS);
+  }
+
+  if (uniqueDayLabels.length === 1) {
+    return uniqueDayLabels[0];
+  }
+
+  if (uniqueDayLabels.length === 2) {
+    return uniqueDayLabels.join(" and ");
+  }
+
+  return `${uniqueDayLabels.slice(0, -1).join(", ")}, and ${
+    uniqueDayLabels[uniqueDayLabels.length - 1]
+  }`;
+}
+
 function buildFollowUpInstruction({
   confirmationCallEnabled,
   feedbackEnabled,
@@ -173,6 +212,7 @@ export function buildSystemPrompt({
   businessKnowledge,
   businessHoursStart,
   businessHoursEnd,
+  businessDays,
   timezone,
   confirmationCallEnabled,
   feedbackEnabled,
@@ -185,6 +225,11 @@ export function buildSystemPrompt({
         businessHoursEnd || "not specified"
       } in ${normalizedTimezone}.`
     : `The business timezone is ${normalizedTimezone}.`;
+  const factualSchedule = `This business is open on the following days: ${formatBusinessDaysForPrompt(
+    businessDays,
+  )}, from ${businessHoursStart || "not specified"} to ${
+    businessHoursEnd || "not specified"
+  }. Always answer questions about hours or which days you're open using this exact information — never say you're open every day or guess hours if this doesn't match. Only offer specific times by calling check_availability for the exact requested date.`;
 
   return [
     `You are ${name}, a professional ${PURPOSE_LABELS[normalizedPurpose]} voice agent for ${businessName}.`,
@@ -192,6 +237,7 @@ export function buildSystemPrompt({
       ? `The business category is ${industry}.`
       : "The business category may vary.",
     hours,
+    factualSchedule,
     `Agent purpose: ${PURPOSE_LABELS[normalizedPurpose]}. ${PURPOSE_INSTRUCTIONS[normalizedPurpose]}`,
     knowledge
       ? `Use this business knowledge as your primary source for business-specific answers: ${knowledge}`
@@ -226,6 +272,7 @@ function buildFrontDeskAgentConfig({
   businessKnowledge,
   businessHoursStart,
   businessHoursEnd,
+  businessDays,
   timezone,
   confirmationCallEnabled,
   feedbackEnabled,
@@ -242,6 +289,7 @@ function buildFrontDeskAgentConfig({
       businessKnowledge,
       businessHoursStart,
       businessHoursEnd,
+      businessDays,
       timezone,
       confirmationCallEnabled,
       feedbackEnabled,
@@ -377,6 +425,7 @@ export async function createAssemblyAIAgent({
   businessKnowledge,
   businessHoursStart,
   businessHoursEnd,
+  businessDays,
   timezone,
   confirmationCallEnabled,
   feedbackEnabled,
@@ -395,6 +444,7 @@ export async function createAssemblyAIAgent({
       businessKnowledge,
       businessHoursStart,
       businessHoursEnd,
+      businessDays,
       timezone,
       confirmationCallEnabled,
       feedbackEnabled,

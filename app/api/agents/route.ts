@@ -297,6 +297,7 @@ export async function POST(request: Request) {
       businessKnowledge,
       businessHoursStart,
       businessHoursEnd,
+      businessDays,
       timezone,
       confirmationCallEnabled: preferences.confirmation_call_enabled,
       feedbackEnabled: preferences.feedback_enabled,
