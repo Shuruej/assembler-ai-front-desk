@@ -34,6 +34,10 @@ type ConfirmationContext = {
   business_name: string | null;
   industry: string | null;
   agent_name: string | null;
+  business_hours_start: string | null;
+  business_hours_end: string | null;
+  business_days: string | null;
+  timezone: string | null;
 };
 
 type VoiceTokenResponse = {
@@ -218,10 +222,31 @@ function buildConfirmationPrompt(context: ConfirmationContext): string {
   const requestedService = displayValue(context.lead.requested_service);
   const preferredDatetime = displayValue(context.lead.preferred_datetime);
   const phoneNumber = displayValue(context.lead.phone_number);
+  const dayLabels: Record<string, string> = {
+    mon: "Monday",
+    tue: "Tuesday",
+    wed: "Wednesday",
+    thu: "Thursday",
+    fri: "Friday",
+    sat: "Saturday",
+    sun: "Sunday",
+  };
+  const orderedDayCodes = ["mon", "tue", "wed", "thu", "fri", "sat", "sun"];
+  const configuredOpenDays = new Set(
+    (context.business_days?.trim() || orderedDayCodes.join(","))
+      .split(",")
+      .map((day) => day.trim().toLowerCase()),
+  );
+  const validOpenDayCodes = orderedDayCodes.filter((day) => configuredOpenDays.has(day));
+  const openDayCodes = validOpenDayCodes.length > 0 ? validOpenDayCodes : orderedDayCodes;
+  const closedDayCodes = orderedDayCodes.filter((day) => !openDayCodes.includes(day));
+  const openDays = openDayCodes.map((day) => dayLabels[day]).join(", ");
+  const closedDays = closedDayCodes.map((day) => dayLabels[day]).join(", ") || "none";
 
   return [
     `You are ${displayValue(context.agent_name)}, a professional outbound confirmation voice agent for ${businessName}.`,
     `The business category is ${industry}.`,
+    `This business is open on: ${openDays}, from ${context.business_hours_start || "not specified"} to ${context.business_hours_end || "not specified"} (${context.timezone || "Asia/Karachi"}). It is closed on: ${closedDays}. If the caller asks about hours or open days, answer strictly based on this — never guess or say every day unless all seven days are listed as open.`,
     `This is a confirmation call from ${businessName}, calling ${customerName} about their ${requestedService} request. Their preferred time is ${preferredDatetime}. Their recorded phone number is ${phoneNumber}.`,
     "You must complete this full call flow in order. Step 1: confirm the appointment details, including final date and time, with explicit yes/correct confirmation before calling assign_booking.",
     "Step 2: once the final appointment date and time are agreed, call the assign_booking tool with confirmed_date in YYYY-MM-DD format, confirmed_time as a clear human-readable time, and optional notes.",

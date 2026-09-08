@@ -55,6 +55,10 @@ export async function GET(
     business_name: agent.business_name,
     industry: agent.industry,
     agent_name: agent.name,
+    business_hours_start: agent.business_hours_start,
+    business_hours_end: agent.business_hours_end,
+    business_days: agent.business_days,
+    timezone: agent.timezone,
     ...normalizeAgentFollowUpPreferences(agent),
   });
 }

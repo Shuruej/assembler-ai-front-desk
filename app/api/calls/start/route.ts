@@ -70,6 +70,7 @@ export async function POST(request: Request) {
         businessKnowledge: agent.business_knowledge,
         businessHoursStart: agent.business_hours_start,
         businessHoursEnd: agent.business_hours_end,
+        businessDays: agent.business_days,
         timezone: agent.timezone,
         confirmationCallEnabled: preferences.confirmation_call_enabled,
         feedbackEnabled: preferences.feedback_enabled,

@@ -109,6 +109,7 @@ const DAY_LABELS: Record<string, string> = {
   sun: "Sunday",
 };
 
+const ORDERED_DAY_CODES = ["mon", "tue", "wed", "thu", "fri", "sat", "sun"];
 const DEFAULT_BUSINESS_DAYS = "mon,tue,wed,thu,fri,sat,sun";
 
 function requireAssemblyAIApiKey(): string {
@@ -156,30 +157,37 @@ function formatCurrentLocalDateTime(timezone?: string | null): string {
   }).format(new Date());
 }
 
-function formatBusinessDaysForPrompt(businessDays?: string | null): string {
-  const dayLabels = (businessDays?.trim() || DEFAULT_BUSINESS_DAYS)
+function getBusinessDayCodesForPrompt(businessDays?: string | null): string[] {
+  const dayCodes = (businessDays?.trim() || DEFAULT_BUSINESS_DAYS)
     .split(",")
     .map((day) => day.trim().toLowerCase())
-    .filter((day) => DAY_LABELS[day])
-    .map((day) => DAY_LABELS[day]);
+    .filter((day) => DAY_LABELS[day]);
 
-  const uniqueDayLabels = Array.from(new Set(dayLabels));
+  const uniqueDayCodes = Array.from(new Set(dayCodes));
 
-  if (uniqueDayLabels.length === 0) {
-    return formatBusinessDaysForPrompt(DEFAULT_BUSINESS_DAYS);
+  if (uniqueDayCodes.length === 0) {
+    return [...ORDERED_DAY_CODES];
   }
 
-  if (uniqueDayLabels.length === 1) {
-    return uniqueDayLabels[0];
+  return ORDERED_DAY_CODES.filter((day) => uniqueDayCodes.includes(day));
+}
+
+function formatDayCodesForPrompt(dayCodes: string[]): string {
+  const dayLabels = dayCodes.map((day) => DAY_LABELS[day]);
+
+  if (dayLabels.length === 0) {
+    return "none";
   }
 
-  if (uniqueDayLabels.length === 2) {
-    return uniqueDayLabels.join(" and ");
+  if (dayLabels.length === 1) {
+    return dayLabels[0];
   }
 
-  return `${uniqueDayLabels.slice(0, -1).join(", ")}, and ${
-    uniqueDayLabels[uniqueDayLabels.length - 1]
-  }`;
+  if (dayLabels.length === 2) {
+    return dayLabels.join(" and ");
+  }
+
+  return `${dayLabels.slice(0, -1).join(", ")}, and ${dayLabels[dayLabels.length - 1]}`;
 }
 
 function buildFollowUpInstruction({
@@ -225,11 +233,15 @@ export function buildSystemPrompt({
         businessHoursEnd || "not specified"
       } in ${normalizedTimezone}.`
     : `The business timezone is ${normalizedTimezone}.`;
-  const factualSchedule = `This business is open on the following days: ${formatBusinessDaysForPrompt(
-    businessDays,
+  const openDayCodes = getBusinessDayCodesForPrompt(businessDays);
+  const closedDayCodes = ORDERED_DAY_CODES.filter((day) => !openDayCodes.includes(day));
+  const factualSchedule = `This business is open on: ${formatDayCodesForPrompt(
+    openDayCodes,
   )}, from ${businessHoursStart || "not specified"} to ${
     businessHoursEnd || "not specified"
-  }. Always answer questions about hours or which days you're open using this exact information — never say you're open every day or guess hours if this doesn't match. Only offer specific times by calling check_availability for the exact requested date.`;
+  } (${normalizedTimezone}). It is CLOSED on: ${formatDayCodesForPrompt(
+    closedDayCodes,
+  )}. When asked about hours or whether we're open on a specific day, answer strictly based on this list — never say "every day" or "Monday through Sunday" unless business_days literally contains all 7 days. Only offer specific times by calling check_availability for the exact requested date.`;
 
   return [
     `You are ${name}, a professional ${PURPOSE_LABELS[normalizedPurpose]} voice agent for ${businessName}.`,
