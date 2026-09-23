@@ -49,6 +49,7 @@ function route(file, db) {
   return load(file, {
     '@/lib/follow-up-preferences': prefs,
     '@/lib/supabase/server': { createSupabaseServiceRoleClient: () => db },
+    '@/lib/sms': { logSimulatedSms: async () => {} },
     '@/lib/assemblyai/client': {
       createAssemblyAIAgent: async () => ({ id: 'voice-agent' }),
       buildRuntimeSystemPrompt: input => `runtime prompt ${JSON.stringify(input)}`,
