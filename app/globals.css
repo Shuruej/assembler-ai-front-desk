@@ -1,8 +1,8 @@
 @import "tailwindcss";
 
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  --background: #f7f8fa;
+  --foreground: #17191d;
 }
 
 @theme inline {
@@ -12,15 +12,180 @@
   --font-mono: var(--font-geist-mono);
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
-}
-
 body {
   background: var(--background);
   color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  font-family: var(--font-geist-sans), Arial, Helvetica, sans-serif;
+}
+
+::selection {
+  background: #dbe8ff;
+  color: #0b3277;
+}
+
+button,
+a,
+input,
+select,
+textarea {
+  -webkit-tap-highlight-color: transparent;
+}
+
+.assembler-grid {
+  background-color: #ffffff;
+  background-image:
+    linear-gradient(to right, rgba(23, 105, 255, 0.035) 1px, transparent 1px),
+    linear-gradient(to bottom, rgba(23, 105, 255, 0.035) 1px, transparent 1px);
+  background-size: 32px 32px;
+}
+
+.assembler-panel {
+  border: 1px solid #dde1e8;
+  background: #ffffff;
+  box-shadow: 0 14px 38px rgba(30, 41, 59, 0.06);
+}
+
+.assembler-field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  color: #282c34;
+  font-size: 0.875rem;
+  font-weight: 500;
+}
+
+.assembler-input {
+  width: 100%;
+  border: 1px solid #c8ced8;
+  border-radius: 0.625rem;
+  background: #ffffff;
+  padding: 0.625rem 0.75rem;
+  color: #17191d;
+  font-size: 0.875rem;
+  font-weight: 400;
+  outline: none;
+  transition: border-color 150ms ease, box-shadow 150ms ease;
+}
+
+.assembler-input::placeholder {
+  color: #8b93a1;
+}
+
+.assembler-input:focus {
+  border-color: #1769ff;
+  box-shadow: 0 0 0 4px rgba(23, 105, 255, 0.1);
+}
+
+.assembler-primary-button,
+.assembler-secondary-button,
+.assembler-nav-link,
+.assembler-mode-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 0.625rem;
+  font-size: 0.875rem;
+  font-weight: 600;
+  transition: background-color 150ms ease, border-color 150ms ease,
+    color 150ms ease, box-shadow 150ms ease;
+}
+
+.assembler-primary-button {
+  min-height: 2.625rem;
+  border: 1px solid #1769ff;
+  background: #1769ff;
+  padding: 0.625rem 1rem;
+  color: #ffffff;
+  box-shadow: 0 7px 18px rgba(23, 105, 255, 0.18);
+}
+
+.assembler-primary-button:hover {
+  border-color: #0b4ed0;
+  background: #0b4ed0;
+}
+
+.assembler-primary-button:disabled {
+  cursor: not-allowed;
+  border-color: #aeb7c5;
+  background: #aeb7c5;
+  box-shadow: none;
+}
+
+.assembler-secondary-button {
+  min-height: 2.5rem;
+  border: 1px solid #c8ced8;
+  background: #ffffff;
+  padding: 0.5625rem 0.875rem;
+  color: #282c34;
+}
+
+.assembler-secondary-button:hover,
+.assembler-nav-link:hover {
+  background: #f0f5ff;
+  color: #0b4ed0;
+}
+
+.assembler-nav-link {
+  min-height: 2.5rem;
+  padding: 0.5625rem 0.75rem;
+  color: #5f6877;
+}
+
+.assembler-mode-button {
+  min-height: 2.25rem;
+  padding: 0.45rem 0.85rem;
+  color: #687080;
+}
+
+.assembler-mode-button:hover {
+  color: #17191d;
+}
+
+.assembler-mode-button-active {
+  background: #17191d;
+  color: #ffffff;
+  box-shadow: 0 3px 9px rgba(23, 25, 29, 0.12);
+}
+
+.assembler-mode-button-active:hover {
+  color: #ffffff;
+}
+
+.assembler-primary-button:focus-visible,
+.assembler-secondary-button:focus-visible,
+.assembler-nav-link:focus-visible,
+.assembler-mode-button:focus-visible {
+  outline: 2px solid #1769ff;
+  outline-offset: 3px;
+}
+
+.assembler-step-number {
+  display: inline-flex;
+  height: 2rem;
+  width: 2rem;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: center;
+  border-radius: 0.5rem;
+  background: #f0f5ff;
+  color: #0b4ed0;
+  font-family: var(--font-geist-mono), monospace;
+  font-size: 0.6875rem;
+  font-weight: 700;
+}
+
+.assembler-error {
+  margin-top: 1rem;
+  border: 1px solid #f1b9b5;
+  border-radius: 0.625rem;
+  background: #fff4f3;
+  padding: 0.75rem;
+  color: #a2322b;
+  font-size: 0.875rem;
+}
+
+@media (max-width: 420px) {
+  .assembler-nav-link {
+    display: none;
+  }
 }
