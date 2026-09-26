@@ -28,6 +28,7 @@ test('validator rejects unsupported rule operator', () => { const b = valid(); b
 test('validator rejects duplicate data field key', () => { const b = valid(); b.dataFields.push({ ...b.dataFields[0] }); assert.throws(() => blueprintModule.validateAgentBlueprint(b), /duplicates/); });
 test('validator rejects enum without options', () => { const b = valid(); b.dataFields[0].type = 'enum'; assert.throws(() => blueprintModule.validateAgentBlueprint(b), /enum choices/); });
 test('validator rejects invalid workflow type', () => { const b = valid(); b.workflow[0].type = 'execute'; assert.throws(() => blueprintModule.validateAgentBlueprint(b), /workflow\[0\].type/); });
+test('validator rejects rule sources and outcomes with broken references', () => { const first = valid(); first.rules[0].source = 'unknown_field'; assert.throws(() => blueprintModule.validateAgentBlueprint(first), /rules\[0\].source/); const second = valid(); second.tools[0].outcomeId = 'unknown_outcome'; assert.throws(() => blueprintModule.validateAgentBlueprint(second), /tools\[0\].outcomeId/); });
 
 function compilerWith(fetch) { return load('lib/assembler/compiler.ts', { './blueprint': blueprintModule }, { fetch, process: { env: { ASSEMBLYAI_API_KEY: 'test-only-key' } } }); }
 function routeWith(compiler) { return load('app/api/agents/compile/route.ts', { 'next/server': { NextResponse: { json: (body, options = {}) => ({ status: options.status || 200, json: async () => body }) } }, '@/lib/assembler/compiler': compiler }); }

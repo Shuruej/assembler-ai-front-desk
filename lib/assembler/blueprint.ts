@@ -94,7 +94,7 @@ export function validateAgentBlueprint(value: unknown): AgentBlueprint {
   }); unique(fieldIds, "dataFields.keys");
   const connections = list(b.connections, "connections");
   const connectionIds = connections.map((entry, i) => { const p = `connections[${i}]`; const c = record(entry, p, ["id", "name", "kind", "reason", "required"]); id(c.id, `${p}.id`); text(c.name, `${p}.name`); choice(c.kind, CONNECTION_KINDS, `${p}.kind`); text(c.reason, `${p}.reason`); bool(c.required, `${p}.required`); return c.id as string; }); unique(connectionIds, "connections.ids");
-  const tools = list(b.tools, "tools");
+  const tools = list(b.tools, "tools", 10);
   const toolIds = tools.map((entry, i) => {
     const p = `tools[${i}]`; const t = record(entry, p, ["id", "name", "description", "kind", "operation", "inputs", "expectedResult", "connectionId", "outcomeId"]);
     id(t.id, `${p}.id`); text(t.name, `${p}.name`); text(t.description, `${p}.description`); choice(t.kind, TOOL_KINDS, `${p}.kind`); choice(t.operation, TOOL_OPERATIONS, `${p}.operation`); text(t.expectedResult, `${p}.expectedResult`);
@@ -118,13 +118,16 @@ export function validateAgentBlueprint(value: unknown): AgentBlueprint {
   const outcomeIds = outcomes.map((entry, i) => { const p = `outcomes[${i}]`; const o = record(entry, p, ["id", "label", "description"]); id(o.id, `${p}.id`); text(o.label, `${p}.label`); text(o.description, `${p}.description`); return o.id as string; }); unique(outcomeIds, "outcomes.ids");
   tools.forEach((entry, i) => { const outcomeId = (entry as Record<string, unknown>).outcomeId; if (outcomeId !== null && !outcomeIds.includes(outcomeId as string)) fail(`tools[${i}].outcomeId`, "must reference an outcome"); });
   const rules = list(b.rules, "rules");
+  const ruleSources = new Set([...fieldIds, ...tools.flatMap((entry) => (entry as AgentBlueprint["tools"][number]).inputs.map((input) => input.key))]);
   const ruleIds = rules.map((entry, i) => {
     const p = `rules[${i}]`; const r = record(entry, p, ["id", "description", "source", "operator", "value", "action", "target"]);
     id(r.id, `${p}.id`); text(r.description, `${p}.description`); text(r.source, `${p}.source`); choice(r.operator, RULE_OPERATORS, `${p}.operator`); choice(r.action, RULE_ACTIONS, `${p}.action`);
+    if (!ruleSources.has(r.source as string)) fail(`${p}.source`, "must reference a collected field or tool input");
     if (r.value !== null && !["string", "number", "boolean"].includes(typeof r.value)) fail(`${p}.value`, "has an unsupported type");
     if (r.operator === "exists" ? r.value !== null : r.value === null) fail(`${p}.value`, "does not match operator");
     if (r.target !== null) id(r.target, `${p}.target`);
     if (["allow_tool", "block_tool"].includes(r.action as string) && !toolIds.includes(r.target as string)) fail(`${p}.target`, "must reference a tool");
+    if (["require_escalation", "require_confirmation"].includes(r.action as string) && r.target !== null && !toolIds.includes(r.target as string)) fail(`${p}.target`, "must reference a tool or be null");
     if (r.action === "set_outcome" && !outcomeIds.includes(r.target as string)) fail(`${p}.target`, "must reference an outcome");
     return r.id as string;
   }); unique(ruleIds, "rules.ids");

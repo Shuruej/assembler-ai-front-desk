@@ -35,6 +35,14 @@ test('registry executes an approved internal record tool', async () => {
   const result = await registry.dispatchBlueprintTool({ blueprint: basic(), toolId: 'save_order', arguments: { order_id: 'A-123' }, executors });
   assert.equal(result.success, true); assert.equal(result.data.saved, 'A-123');
 });
+test('successful tool records only its blueprint-approved outcome', async () => {
+  const blueprint = basic();
+  blueprint.outcomes = [{ id: 'request_saved' }];
+  blueprint.tools[0].outcomeId = 'request_saved';
+  const saved = [];
+  const result = await registry.dispatchBlueprintTool({ blueprint, toolId: 'save_order', arguments: { order_id: 'A-123' }, executors, setOutcome: async id => saved.push(id) });
+  assert.equal(result.outcome, 'request_saved'); assert.deepEqual(saved, ['request_saved']);
+});
 test('registry rejects unknown tools and invalid arguments', async () => {
   const blueprint = basic();
   assert.equal((await registry.dispatchBlueprintTool({ blueprint, toolId: 'unknown', arguments: {}, executors })).code, 'unknown_tool');
@@ -75,4 +83,57 @@ test('connection listing projects only non-secret columns', async () => {
   const response = await route.GET(new Request('http://localhost'), { params: Promise.resolve({ id: 'agent' }) });
   assert.equal(response.status, 200);
   assert.doesNotMatch(selection, /secret|token|credential/i);
+});
+test('blueprint agent uses flat AssemblyAI voice tools and a blueprint prompt', async () => {
+  let sent;
+  const voice = load('lib/assemblyai/client.ts', {}, {
+    process: { env: { ASSEMBLYAI_API_KEY: 'test-key' } },
+    fetch: async (_url, options) => { sent = JSON.parse(options.body); return { ok: true, headers: { get: () => 'application/json' }, json: async () => ({ id: 'voice-agent' }) }; },
+  });
+  const blueprint = { identity: { name: 'Mira', role: 'Order support agent' }, objective: 'Resolve order questions', greeting: 'Hello', behavior: { instructions: [] }, knowledge: { requirements: [] }, dataFields: [], rules: [], outcomes: [], tools: [{ id: 'lookup_order', name: 'Look up order', description: 'Call when a customer asks for order status.', kind: 'http', operation: 'http_request', inputs: [{ key: 'order_id', type: 'string', description: 'Customer order ID', required: true }], expectedResult: 'Order status', connectionId: 'order_api', outcomeId: null }] };
+  await voice.createAssemblyAIAgent({ name: 'Mira', businessName: 'Example Shop', businessHoursStart: '09:00', businessHoursEnd: '17:00', businessDays: 'mon,tue,wed,fri', blueprint });
+  assert.equal(sent.tools[0].type, 'function');
+  assert.equal(sent.tools[0].name, 'lookup_order');
+  assert.equal(sent.tools[0].parameters.properties.order_id.type, 'string');
+  assert.deepEqual(JSON.parse(JSON.stringify(sent.tools[0].parameters.required)), ['order_id']);
+  assert.match(sent.system_prompt, /Resolve order questions/);
+  assert.doesNotMatch(sent.system_prompt, /capture_lead/);
+});
+test('tool execution logs only approved tool and argument names', async () => {
+  const writes = [];
+  const blueprint = basic();
+  const db = { from(table) {
+    const query = {
+      select() { return query; }, eq() { return query; },
+      async single() { return { data: table === 'calls' ? { id: 'call', agent_id: 'agent', status: 'in_progress' } : { id: 'agent', blueprint }, error: null }; },
+      insert(value) { writes.push({ table, value }); return Promise.resolve({ error: null }); },
+    };
+    return query;
+  } };
+  const route = load('app/api/agents/tools/execute/route.ts', {
+    '@/lib/supabase/server': { createSupabaseServiceRoleClient: () => db },
+    '@/lib/assembler/blueprint': { validateAgentBlueprint: value => value },
+    '@/lib/assembler/connections': connections,
+    '@/lib/assembler/registry': { dispatchBlueprintTool: async () => ({ success: false, code: 'invalid_arguments', error: 'Invalid' }) },
+    '@/lib/assembler/records': records,
+    '@/app/api/availability/check/route': { POST: async () => {} },
+    '@/app/api/availability/book/route': { POST: async () => {} },
+    '@/app/api/leads/escalate/route': { POST: async () => {} },
+  });
+  await route.POST(new Request('http://localhost/api/agents/tools/execute', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ call_id: 'call', tool_id: 'save_order', arguments: { order_id: 'A1', 'Bearer secret': 'private' } }) }));
+  assert.deepEqual(JSON.parse(JSON.stringify(writes[0].value.argument_keys)), ['order_id']);
+  assert.equal(writes[0].value.tool_id, 'save_order');
+  assert.doesNotMatch(JSON.stringify(writes[0]), /private|Bearer/);
+});
+test('blueprint creation stops before minting a voice agent when storage is absent', async () => {
+  let minted = 0;
+  const query = { select() { return query; }, async limit() { return { error: { code: '42703' } }; } };
+  const route = load('app/api/agents/route.ts', {
+    '@/lib/assemblyai/client': { createAssemblyAIAgent: async () => { minted++; return { id: 'voice' }; } },
+    '@/lib/supabase/server': { createSupabaseServiceRoleClient: () => ({ from: () => query }) },
+    '@/lib/assembler/blueprint': { validateAgentBlueprint: value => value, BlueprintValidationError: class extends Error {} },
+    '@/lib/follow-up-preferences': { normalizeFollowUpPreferences: () => ({ confirm_appointments_by_phone: false, collect_feedback_after_confirmation: false }), normalizeAgentFollowUpPreferences: () => ({ confirmation_call_enabled: false, feedback_enabled: false }) },
+  });
+  const response = await route.POST(new Request('http://localhost/api/agents', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ business_name: 'Shop', name: 'Mira', blueprint: basic() }) }));
+  assert.equal(response.status, 503); assert.equal(minted, 0);
 });

@@ -19,8 +19,9 @@ export async function POST(request: Request) {
   catch { return Response.json({ success: false, error: "Invalid JSON request." }, { status: 400 }); }
   if (!body || typeof body.call_id !== "string" || typeof body.tool_id !== "string") return Response.json({ success: false, error: "call_id and tool_id are required." }, { status: 400 });
   const supabase = createSupabaseServiceRoleClient();
-  const { data: call } = await supabase.from("calls").select("id,agent_id").eq("id", body.call_id).single();
+  const { data: call } = await supabase.from("calls").select("id,agent_id,status").eq("id", body.call_id).single();
   if (!call) return Response.json({ success: false, error: "Call not found." }, { status: 404 });
+  if (call.status !== "in_progress") return Response.json({ success: false, error: "This call is no longer active." }, { status: 409 });
   const { data: agent } = await supabase.from("agents").select("id,blueprint,google_calendar_connected").eq("id", call.agent_id).single();
   if (!agent?.blueprint) return Response.json({ success: false, error: "This call has no active blueprint." }, { status: 404 });
   const agentId: string = agent.id;
@@ -62,9 +63,9 @@ export async function POST(request: Request) {
     },
   });
   const { error: logError } = await supabase.from("agent_tool_logs").insert({
-    agent_id: agentId, call_id: call.id, tool_id: body.tool_id, tool_kind: tool?.kind ?? "unknown",
+    agent_id: agentId, call_id: call.id, tool_id: tool?.id ?? "unknown_tool", tool_kind: tool?.kind ?? "unknown",
     started_at: new Date(started).toISOString(), completed_at: new Date().toISOString(),
-    success: result.success, argument_keys: args && typeof args === "object" && !Array.isArray(args) ? Object.keys(args) : [],
+    success: result.success, argument_keys: tool && args && typeof args === "object" && !Array.isArray(args) ? Object.keys(args).filter((key) => tool.inputs.some((input) => input.key === key)) : [],
     result_summary: result.success ? "Action completed" : "Action failed", error_code: result.code ?? null,
     duration_ms: Date.now() - started,
   });

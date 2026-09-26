@@ -1,128 +1,70 @@
-# VoiceAgent Studio / AI Front Desk
+# Assembler
 
-VoiceAgent Studio is a Next.js 16 hackathon project for the AssemblyAI Voice Agent Hackathon. It creates purpose-driven AssemblyAI voice agents from a business prompt, lightweight business knowledge, and a selected workflow template.
+**Describe the workflow. Assemble the agent.** Assembler turns a business description into a validated voice-agent blueprint, then uses AssemblyAI's Voice Agent API to create and test an agent in the browser. It is a single-environment hackathon app, not an industry template marketplace.
 
-AI Front Desk is one template inside the broader product: an appointment-focused receptionist that answers inbound calls, captures leads only after a mandatory read-back confirmation, runs a follow-up confirmation call, assigns a booking ID, and collects post-booking feedback.
-
-## Problem
-
-Businesses need voice agents for more than appointment booking. A salon may need a front desk, a retailer may need product inquiry handling, a SaaS team may need support triage, and a services business may need lead qualification. Most small teams do not have the time or technical setup to design prompts, tools, call flows, and dashboards from scratch.
-
-## Solution
-
-VoiceAgent Studio turns one business description into a voice agent with a purpose-aware prompt, tool guidance, and dashboard workflow:
-
-1. Describe the business, industry, agent persona, purpose, and business knowledge.
-2. Create an AssemblyAI Voice Agent with a dynamic system prompt.
-3. Start an inbound browser voice call.
-4. Answer questions from business knowledge when available.
-5. Capture a confirmed follow-up lead only when the selected purpose calls for it.
-6. Review agents, calls, leads, optional bookings, and feedback from the dashboard.
-
-## Current MVP
-
-- Purpose-driven agent creation with templates for general receptionist, appointment booking, product inquiry, customer support, lead qualification, and feedback collection.
-- Lightweight business knowledge textarea for products, services, FAQs, policies, pricing notes, and support information.
-- Dynamic AssemblyAI system prompts based on business name, industry, agent persona, purpose, and business knowledge.
-- Purpose-specific `capture_lead` instructions while keeping the existing tool surface simple.
-- Mandatory read-back confirmation before the `capture_lead` tool saves any lead.
-- Browser-based inbound voice demo using microphone audio.
-- Dashboard for agents, inbound calls, confirmation calls, leads, optional booking workflow fields, and feedback.
-- AI Front Desk confirmation-call flow at `/confirm/[leadId]`.
-- Booking assignment with `booking_id`, `confirmed_date`, `confirmed_time`, and `confirmation_status`.
-- Feedback capture with `feedback_rating` and `feedback_notes`.
-- Dashboard manual refresh plus refresh-on-focus and visibility change.
-- Static successful-workflow snapshot on the homepage for demo resilience if live mic/API access fails.
-
-## Purpose Templates
-
-- General receptionist: route naturally, answer basic questions, and capture follow-up details when staff should respond.
-- Appointment booking: capture booking intent, preferred time, requested service, caller name, phone number, and scheduling notes.
-- Product inquiry: answer from business knowledge first, then capture follow-up for quotes, availability, or staff contact.
-- Customer support: answer from business knowledge and policies, then capture unresolved issues for human follow-up.
-- Lead qualification: gather need, fit, timeline, and contact details before capturing qualified interest.
-- Feedback collection: gather rating/comments and capture follow-up when feedback needs staff response.
-
-## AssemblyAI Usage
-
-The app uses AssemblyAI Voice Agent capabilities in two places:
-
-- Inbound demo call: `/demo` opens a browser microphone session against the created AssemblyAI agent and handles the `capture_lead` tool call.
-- Confirmation call: `/confirm/[leadId]` starts a browser voice session with a purpose-built confirmation prompt and exposes `assign_booking` and `capture_feedback` tools for the AI Front Desk booking template.
-
-Audio is streamed over the AssemblyAI Voice Agent WebSocket using PCM audio from `public/assemblyai-pcm-worklet.js`. Server routes mint voice tokens, start/end call records, and persist tool-call results.
+The blueprint describes identity, behavior, knowledge needs, data fields, tools, connections, rules, outcomes, and a readable workflow. Users review it before agent creation. The existing manual creation, leads, booking, confirmation, feedback, Calendar, simulated SMS, and dashboard flows remain available.
 
 ## Architecture
 
-- `app/page.tsx`: purpose-driven agent creation, demo guide, and static successful-workflow snapshot.
-- `app/demo/page.tsx`: inbound browser voice call demo.
-- `app/confirm/[leadId]/page.tsx`: AI Front Desk confirmation call UI, tool handling, and live results refresh.
-- `app/dashboard/page.tsx`: dashboard for agents, calls, leads, optional bookings, and feedback.
-- `app/api/*`: route handlers for agents, calls, leads, voice tokens, confirmation context, booking, and feedback.
-- `lib/assemblyai/client.ts`: AssemblyAI API client helpers and dynamic prompt generation.
-- `lib/supabase/*`: Supabase clients.
-- `supabase/migrations/*`: core tables, purpose/knowledge fields, and confirmation workflow fields.
+1. Guided creation sends intent to `POST /api/agents/compile`. AssemblyAI LLM Gateway returns strict structured JSON; Assembler validates it before showing Blueprint Review.
+2. Creating a blueprint agent stores the blueprint and installs flat Voice Agent function tools. HTTP/webhook connections are configured separately. Calendar tools reuse the existing Google integration and internal-slots fallback.
+3. `/demo` streams microphone audio through the existing AssemblyAI WebSocket flow. A blueprint `tool.call` reaches `/api/agents/tools/execute`, where the registry validates its ID and arguments, evaluates deterministic rules, and invokes an approved executor.
+4. Executors can save generic records, flag human escalation, use existing availability/booking routes, or call a configured HTTP endpoint or outbound webhook. Results return through the existing `reply.done`-gated `tool.result` queue with the original AssemblyAI `call_id`.
+5. Agent Studio shows fields, tool readiness, connections, rules, workflow, records, sanitized tool logs, and call outcomes.
 
 ## Setup
+
+Use Node.js and the locked dependencies:
 
 ```bash
 npm install
 npm run dev
 ```
 
-Open `http://localhost:3000`.
-
-Apply the Supabase migrations in `supabase/migrations` to your Supabase project before running the full workflow.
-
-The follow-up preferences feature requires `20260906120000_add_agent_follow_up_preferences.sql`.
-Apply it before deploying the updated agent-creation API. It adds
-`agents.confirmation_call_enabled` and `agents.feedback_enabled`, both defaulting
-to true for existing agents. A database trigger normalizes feedback to false
-when confirmation is off. Simple setup saves the selected values; Advanced
-setup defaults to both enabled. These preferences govern the confirmation
-flow only and do not change inbound voice behavior.
-
-## Environment Variables
+Open `http://localhost:3000`. Apply the SQL files in `supabase/migrations` in order. **Blueprint creation requires `20260927120000_assembler_core.sql` first.** It adds nullable blueprint/outcome columns and generic record, connection, and log tables without replacing leads. The API refuses to mint a blueprint agent if its storage is missing.
 
 Create `.env.local` with:
 
-```bash
-ASSEMBLYAI_API_KEY=your_assemblyai_api_key
-NEXT_PUBLIC_SUPABASE_URL=your_supabase_project_url
-NEXT_PUBLIC_SUPABASE_ANON_KEY=your_supabase_anon_key
-SUPABASE_SERVICE_ROLE_KEY=your_supabase_service_role_key
+```text
+ASSEMBLYAI_API_KEY=...
+ASSEMBLER_COMPILER_MODEL=openai/gpt-5-nano
+NEXT_PUBLIC_SUPABASE_URL=...
+NEXT_PUBLIC_SUPABASE_ANON_KEY=...
+SUPABASE_SERVICE_ROLE_KEY=...
+GOOGLE_CLIENT_ID=...
+GOOGLE_CLIENT_SECRET=...
+GOOGLE_REDIRECT_URI=...
+CONNECTION_ENCRYPTION_KEY=...
 ```
 
-The service-role key is used only by server-side API routes. Do not expose it in client components.
+`ASSEMBLER_COMPILER_MODEL` is optional and defaults to `openai/gpt-5-nano`. `CONNECTION_ENCRYPTION_KEY` is needed when saving a connection authorization header; use a random 32-byte value encoded as 64 hex characters or base64. Google variables are needed for optional Calendar OAuth. Never commit secrets or expose service-role credentials in browser code.
 
-## Demo Script
+## Demo path
 
-Use the full script in `HACKATHON_DEMO_SCRIPT.md`. Short version:
+1. Describe a workflow on the home page; review the Blueprint and regenerate if its proposed data or actions are wrong.
+2. Complete business details, create the agent, and open **Configure connections** in Agent Studio.
+3. Set up any required HTTPS API/webhook endpoint. Authorization headers are AES-GCM encrypted at rest and not returned by the connection API. Calendar tools can use Google or internal slots.
+4. Start a browser voice test and ask for an approved action. Confirm details when prompted.
+5. Return to Agent Studio for records, tool logs, and call outcome.
 
-1. Create a purpose-driven agent for a sample business, such as "Bright Cut Studio".
-2. Select the appointment booking purpose to show the AI Front Desk template, or product inquiry/support to show broader Studio behavior.
-3. Start the inbound call and ask a purpose-relevant question or request.
-4. Confirm the read-back so the lead is saved only after explicit caller approval.
-5. Open the dashboard and show the agent purpose, knowledge preview, inbound call, and lead.
-6. For appointment leads, open the confirmation flow, agree on date/time, and give a 1-5 rating.
-7. Return to the dashboard and show the optional booking fields, status, rating, and notes.
+For a cross-business demo, use auto-repair intake with emergency escalation and ecommerce order lookup backed by a test API. The same compiler and dispatcher handle both. Record live results in [docs/ASSEMBLER_VALIDATION.md](docs/ASSEMBLER_VALIDATION.md) before claiming generality.
 
-## Known Limitations
+## Verification
 
-- Business knowledge is prompt-injected text, not retrieval-augmented generation yet.
-- The confirmation flow is simulated in-browser rather than dialing a real phone number.
-- Live demo quality depends on microphone permissions, browser audio support, and AssemblyAI/Supabase credentials.
-- The app is optimized for hackathon clarity, not multi-tenant production authorization.
-- Scheduling availability is not integrated with a real calendar yet.
+```bash
+npx tsc --noEmit
+node --test tests/*.test.cjs
+npm run build
+git diff --check
+```
 
-## Future Roadmap
+Tests mock paid model calls and external services. They cover blueprint validation, compiler errors, flat Voice Agent tools, rules, registry failures, record validation, encryption, unsafe URLs, secret-free connection responses, and legacy voice-result ordering.
 
-- Retrieval-augmented generation over uploaded docs, websites, and knowledge bases.
-- Twilio inbound and outbound phone calling.
-- CRM connectors for HubSpot, Salesforce, Airtable, and similar systems.
-- MCP/API integrations so generated agents can safely use business tools.
-- Calendar integrations for live availability, booking conflicts, and rescheduling.
-- Authentication and multi-business workspaces.
-- SMS/email follow-up with review links.
-- Analytics for missed calls, conversion rate, support resolution, and customer satisfaction.
-- Human handoff when callers ask complex or sensitive questions.
+## Known limitations
+
+- There is no account authorization or tenant isolation. **Do not expose this single-operator hackathon app as a public multi-user service.**
+- The new migration must be applied to the target Supabase project; a repository file alone does not change a remote database.
+- Live compiler and voice quality depend on AssemblyAI connectivity. Eight-business generality validation remains incomplete; see the validation record.
+- External connections use a fixed HTTPS endpoint, method, JSON body or GET query from approved tool arguments, optional encrypted authorization header, an eight-second timeout, and no redirects. They are not an integration marketplace.
+- The existing Google Calendar path has known timezone and concurrent-booking limitations. Internal slots cover only the seven days generated at agent creation; schedule edits do not replenish them. Confirmation-call booking remains a separate legacy flow.
+- No inbound telephony, real SMS provider, or knowledge-retrieval platform is included. SMS notifications are simulated log entries.

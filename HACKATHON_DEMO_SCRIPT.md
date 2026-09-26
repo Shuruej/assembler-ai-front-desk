@@ -1,62 +1,24 @@
-# VoiceAgent Studio / AI Front Desk Hackathon Demo Script
+# Assembler demo script
 
-## 2-3 Minute Pitch
+## Two-minute story
 
-"VoiceAgent Studio is a no-code AssemblyAI Voice Agent builder for businesses. A business owner describes what they do, chooses an agent purpose, adds lightweight business knowledge, and the app creates a purpose-driven voice agent with the right prompt, tool instructions, and dashboard workflow.
+“Businesses describe work, not JSON schemas. Assembler turns that description into a reviewed blueprint: what the voice agent should know, what details it collects, what actions it can take, which systems those actions need, and what counts as success. AssemblyAI supplies the real-time voice; Assembler supplies the business rules and action layer.”
 
-AI Front Desk is one template inside that broader studio. It handles appointment booking with a mandatory read-back before saving a lead, then runs a confirmation call that assigns a booking ID and captures feedback."
+## Live path — run only after external setup is verified
 
-## Live Demo Flow
+1. **Describe.** Paste an auto-repair workflow: “Identify the vehicle and problem, answer common service questions from our supplied knowledge, check appointment availability, create a booking after explicit confirmation, and escalate immediately for brake failure, smoke, or an accident.” Click **Design blueprint**. Review fields, tools, connections, emergency rules, and workflow. Do not imply this was chosen from a vehicle template.
+2. **Create.** Complete the business name, schedule, and factual knowledge. Create the agent. Open **Configure connections**. Calendar tools can use the existing Google connection or internal slots. Show the readiness labels; do not say an unconfigured connection is ready.
+3. **Speak.** Start the browser voice test. Ask for an appointment, choose a returned time, and confirm it. The generated tool call should use the existing result queue; the booking should appear in the dashboard. Try a danger report separately to demonstrate escalation.
+4. **Inspect.** In Agent Studio, show a real record or booked lead, the sanitized tool log, and the approved call outcome. If a tool fails, show its actual failure status.
+5. **Contrast.** Create an ecommerce support blueprint: collect order ID, look up order status through a generic configured HTTPS API, answer from supplied policies, escalate unresolved issues. Point out that it should not require Calendar unless the description asks for scheduling. Configure a test API before claiming the lookup ran.
 
-1. On the homepage, create an agent.
+## Prerequisites
 
-Say: "I will create an agent for Bright Cut Studio, a salon. The agent name is Ava, and I will choose the appointment booking purpose. I can also paste business knowledge such as services, hours, pricing notes, policies, or FAQs."
+- Apply `supabase/migrations/20260927120000_assembler_core.sql` to the target project.
+- Verify AssemblyAI LLM Gateway and Voice Agent API connectivity, service-role Supabase access, browser microphone permissions, and any external test API.
+- Set `CONNECTION_ENCRYPTION_KEY` if a connection needs an authorization header.
+- Complete and record the scenario checks in `docs/ASSEMBLER_VALIDATION.md` before saying the eight-business generality requirement passed.
 
-Example business knowledge:
+## Honest fallback
 
-```text
-Services include haircuts, color, and blowouts. Haircuts start at $45. Open Tuesday through Saturday, 9 AM to 6 PM. Same-day appointments may be available, but staff must confirm final times.
-```
-
-2. Click `Start test call`.
-
-Say to the voice agent: "Hi, my name is Maya Chen. I want to book a haircut this Friday afternoon. My phone number is 415-555-0198."
-
-When the agent reads details back, say: "Yes, that is correct."
-
-3. Open the dashboard.
-
-Say: "The dashboard now shows the agent purpose and a compact knowledge preview. The lead is pending confirmation, and the booking columns are labeled as optional workflow fields because not every VoiceAgent Studio template is a booking agent."
-
-4. Click `Confirm` for the appointment lead.
-
-Say to the confirmation agent: "Yes, Friday at 2:30 PM works for me."
-
-When the agent reads the final appointment back, say: "Yes, correct."
-
-When asked for feedback, say: "Five out of five. It was fast and clear, and I liked that the agent repeated everything back."
-
-If the agent asks to confirm the feedback, say: "Yes, that is right."
-
-5. Return to the dashboard and click `Refresh`.
-
-Say: "The same lead now has a confirmed status, a booking ID, confirmed date and time, feedback rating, and feedback notes. The call table separates inbound calls from confirmation calls."
-
-## Alternate Purpose Demo
-
-If you want to show the broader product direction after the booking flow, create a second agent:
-
-- Business: "Northstar Gear"
-- Industry: "Outdoor retail"
-- Purpose: "Product inquiry"
-- Knowledge: "Carries hiking packs, trail shoes, rain shells, and tents. Warranty is 30 days for unused items. Staff can follow up on special orders and size availability."
-
-Say to the agent: "Do you carry waterproof hiking boots, and can someone call me if size 10 is available?"
-
-Say: "For product inquiry agents, the prompt tells the agent to answer from business knowledge first, then capture a lead only when the caller wants follow-up, availability updates, quotes, or staff contact."
-
-## Backup Demo If Live Voice Fails
-
-Use the homepage's successful-workflow snapshot.
-
-Say: "If browser mic permissions or live API access fail during judging, this static panel shows the completed AI Front Desk template: inbound lead, confirmation booking, and customer feedback. The dashboard supports the same stored workflow fields while the broader Studio layer now adds purpose-driven prompting and business knowledge."
+If the gateway or microphone fails, show Blueprint Review only if a fresh live compile actually succeeded. Otherwise show the existing committed code/tests and the legacy working agent path. Do not present a static illustration, mocked response, or unconfigured action as a successful live run.

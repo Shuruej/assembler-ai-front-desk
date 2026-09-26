@@ -51,9 +51,9 @@ const DEFAULT_BUSINESS_HOURS_END = "18:00";
 const DEFAULT_APPOINTMENT_DURATION_MINUTES = 60;
 
 const INSPIRATION_EXAMPLES = [
-  "A dental receptionist that answers service questions and books checkups.",
-  "A salon assistant that captures new clients and checks appointment times.",
-  "A property inquiry agent that qualifies callers and escalates complex requests.",
+  "An auto-repair agent that records vehicle issues, checks service times, and flags emergencies.",
+  "An online-store agent that looks up orders through an API and escalates unresolved requests.",
+  "A property agent that qualifies buyers by budget, location, and timeline.",
 ];
 
 const BUILD_STEPS = [
@@ -70,7 +70,7 @@ const BUILD_STEPS = [
   {
     number: "03",
     title: "Test",
-    detail: "Run a browser call, then inspect calls and leads in the dashboard.",
+    detail: "Run a browser call, then inspect actions and outcomes in Agent Studio.",
   },
 ];
 
@@ -542,9 +542,9 @@ export default function Home() {
                 Build an agent from business intent
               </h1>
               <p className="mt-4 max-w-2xl text-base leading-7 text-[#5F6877] sm:text-lg sm:leading-8">
-                Assembler turns a business workflow into a voice agent configured
-                to answer questions, collect caller details, check availability,
-                book appointments, and escalate when needed.
+                Assembler turns a business workflow into a voice agent designed
+                to answer questions, collect relevant details, use connected
+                actions, and involve a person when needed.
               </p>
             </div>
             <div className="border-l-2 border-[#1769FF] pl-5">
@@ -625,7 +625,7 @@ export default function Home() {
                     <div>
                       <h3 className="font-semibold">Business intent</h3>
                       <p className="text-sm text-[#687080]">
-                        Include services, caller goals, hours, and booking rules.
+                        Include caller goals, information to collect, actions, policies, and escalation triggers.
                       </p>
                     </div>
                   </div>
@@ -917,10 +917,10 @@ export default function Home() {
               </ol>
               <div className="mt-6 border-t border-[#E1E4E9] pt-5">
                 <p className="text-xs font-semibold uppercase tracking-[0.14em] text-[#687080]">
-                  Current voice agent actions
+                  {blueprint && creationMode === "simple" ? "Planned blueprint tools" : "Legacy voice actions"}
                 </p>
                 <div className="mt-3 flex flex-wrap gap-2">
-                  {["Lead capture", "Availability", "Booking", "Escalation"].map(
+                  {(blueprint && creationMode === "simple" ? blueprint.tools.map((tool) => tool.name) : ["Lead capture", "Availability", "Booking", "Escalation"]).map(
                     (capability) => (
                       <span
                         className="rounded-md bg-[#F0F5FF] px-2.5 py-1.5 text-xs font-medium text-[#0B4ED0]"

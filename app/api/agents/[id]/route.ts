@@ -1,5 +1,6 @@
 import { updateAssemblyAIAgent } from "@/lib/assemblyai/client";
 import { createSupabaseServiceRoleClient } from "@/lib/supabase/server";
+import { validateAgentBlueprint } from "@/lib/assembler/blueprint";
 
 const PUBLIC_AGENT_COLUMNS = "id,business_name,industry,name,agent_purpose,business_knowledge,business_hours_start,business_hours_end,business_days,appointment_duration_minutes,timezone,assemblyai_agent_id,confirmation_call_enabled,feedback_enabled,google_calendar_connected,created_at,blueprint";
 const LEGACY_AGENT_COLUMNS = "id,business_name,industry,name,agent_purpose,business_knowledge,business_hours_start,business_hours_end,business_days,appointment_duration_minutes,timezone,assemblyai_agent_id,confirmation_call_enabled,feedback_enabled,google_calendar_connected,created_at";
@@ -224,6 +225,18 @@ export async function PUT(
     );
   }
 
+  let blueprint = null;
+  if (existingAgent.blueprint) {
+    try {
+      blueprint = validateAgentBlueprint({
+        ...existingAgent.blueprint,
+        identity: { ...existingAgent.blueprint.identity, name },
+      });
+    } catch {
+      return Response.json({ error: "Stored blueprint is invalid." }, { status: 500 });
+    }
+  }
+
   try {
     await updateAssemblyAIAgent(existingAgent.assemblyai_agent_id, {
       businessName,
@@ -237,7 +250,7 @@ export async function PUT(
       timezone: existingAgent.timezone,
       confirmationCallEnabled: existingAgent.confirmation_call_enabled,
       feedbackEnabled: existingAgent.feedback_enabled,
-      blueprint: existingAgent.blueprint,
+      blueprint,
     });
   } catch (error) {
     return Response.json(
@@ -263,6 +276,7 @@ export async function PUT(
       business_hours_end: businessHoursEnd,
       business_days: businessDays,
       appointment_duration_minutes: appointmentDurationMinutes,
+      ...(blueprint ? { blueprint } : {}),
     })
     .eq("id", id)
     .select(LEGACY_AGENT_COLUMNS)
@@ -272,5 +286,5 @@ export async function PUT(
     return Response.json({ error: error.message }, { status: 500 });
   }
 
-  return Response.json(existingAgent.blueprint ? { ...agent, blueprint: existingAgent.blueprint } : agent);
+  return Response.json(blueprint ? { ...agent, blueprint } : agent);
 }
