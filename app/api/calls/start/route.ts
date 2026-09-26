@@ -29,11 +29,14 @@ export async function POST(request: Request) {
   const supabase = createSupabaseServiceRoleClient();
   const assemblyAIAgentId = body.assemblyai_agent_id.trim();
 
-  const { data: agent, error: agentError } = await supabase
+  let { data: agent, error: agentError } = await supabase
     .from("agents")
-    .select("*")
+    .select("id,name,business_name,industry,agent_purpose,business_knowledge,business_hours_start,business_hours_end,business_days,timezone,confirmation_call_enabled,feedback_enabled,blueprint")
     .eq("assemblyai_agent_id", assemblyAIAgentId)
     .single();
+  if (agentError?.code === "42703" || agentError?.code === "PGRST204") {
+    ({ data: agent, error: agentError } = await supabase.from("agents").select("id,name,business_name,industry,agent_purpose,business_knowledge,business_hours_start,business_hours_end,business_days,timezone,confirmation_call_enabled,feedback_enabled").eq("assemblyai_agent_id", assemblyAIAgentId).single());
+  }
 
   if (agentError || !agent) {
     return Response.json(
@@ -74,8 +77,10 @@ export async function POST(request: Request) {
         timezone: agent.timezone,
         confirmationCallEnabled: preferences.confirmation_call_enabled,
         feedbackEnabled: preferences.feedback_enabled,
+        blueprint: agent.blueprint,
       }),
       timezone: agent.timezone ?? "Asia/Karachi",
+      uses_blueprint: Boolean(agent.blueprint),
     },
     { status: 201 },
   );

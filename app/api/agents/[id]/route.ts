@@ -1,6 +1,9 @@
 import { updateAssemblyAIAgent } from "@/lib/assemblyai/client";
 import { createSupabaseServiceRoleClient } from "@/lib/supabase/server";
 
+const PUBLIC_AGENT_COLUMNS = "id,business_name,industry,name,agent_purpose,business_knowledge,business_hours_start,business_hours_end,business_days,appointment_duration_minutes,timezone,assemblyai_agent_id,confirmation_call_enabled,feedback_enabled,google_calendar_connected,created_at,blueprint";
+const LEGACY_AGENT_COLUMNS = "id,business_name,industry,name,agent_purpose,business_knowledge,business_hours_start,business_hours_end,business_days,appointment_duration_minutes,timezone,assemblyai_agent_id,confirmation_call_enabled,feedback_enabled,google_calendar_connected,created_at";
+
 type UpdateAgentRequestBody = {
   business_name?: unknown;
   industry?: unknown;
@@ -125,11 +128,14 @@ export async function GET(
 ) {
   const { id } = await context.params;
   const supabase = createSupabaseServiceRoleClient();
-  const { data: agent, error } = await supabase
+  let { data: agent, error } = await supabase
     .from("agents")
-    .select("*")
+    .select(PUBLIC_AGENT_COLUMNS)
     .eq("id", id)
     .single();
+  if (error?.code === "42703" || error?.code === "PGRST204") {
+    ({ data: agent, error } = await supabase.from("agents").select(LEGACY_AGENT_COLUMNS).eq("id", id).single());
+  }
 
   if (error || !agent) {
     return Response.json({ error: "Agent not found." }, { status: 404 });
@@ -198,11 +204,14 @@ export async function PUT(
   const businessName = body.business_name.trim();
   const name = body.name.trim();
   const supabase = createSupabaseServiceRoleClient();
-  const { data: existingAgent, error: lookupError } = await supabase
+  let { data: existingAgent, error: lookupError } = await supabase
     .from("agents")
-    .select("*")
+    .select("id,assemblyai_agent_id,timezone,confirmation_call_enabled,feedback_enabled,blueprint")
     .eq("id", id)
     .single();
+  if (lookupError?.code === "42703" || lookupError?.code === "PGRST204") {
+    ({ data: existingAgent, error: lookupError } = await supabase.from("agents").select("id,assemblyai_agent_id,timezone,confirmation_call_enabled,feedback_enabled").eq("id", id).single());
+  }
 
   if (lookupError || !existingAgent) {
     return Response.json({ error: "Agent not found." }, { status: 404 });
@@ -228,6 +237,7 @@ export async function PUT(
       timezone: existingAgent.timezone,
       confirmationCallEnabled: existingAgent.confirmation_call_enabled,
       feedbackEnabled: existingAgent.feedback_enabled,
+      blueprint: existingAgent.blueprint,
     });
   } catch (error) {
     return Response.json(
@@ -255,12 +265,12 @@ export async function PUT(
       appointment_duration_minutes: appointmentDurationMinutes,
     })
     .eq("id", id)
-    .select()
+    .select(LEGACY_AGENT_COLUMNS)
     .single();
 
   if (error) {
     return Response.json({ error: error.message }, { status: 500 });
   }
 
-  return Response.json(agent);
+  return Response.json(existingAgent.blueprint ? { ...agent, blueprint: existingAgent.blueprint } : agent);
 }

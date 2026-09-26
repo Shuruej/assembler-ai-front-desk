@@ -12,6 +12,8 @@ import {
 type CreationMode = "simple" | "advanced";
 
 type CreatedAgent = {
+  id?: string;
+  blueprint?: AgentBlueprint | null;
   confirmation_call_enabled?: boolean;
   feedback_enabled?: boolean;
   business_name?: string | null;
@@ -149,6 +151,7 @@ export default function Home() {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         ...payload,
+        ...(creationMode === "simple" && blueprint && blueprintIntent === businessDescription.trim() ? { blueprint } : {}),
         follow_up_preferences: preferences ?? DEFAULT_FOLLOW_UP_PREFERENCES,
         confirmation_call_enabled:
           preferences?.confirm_appointments_by_phone ?? true,
@@ -803,8 +806,8 @@ export default function Home() {
                     </div>
                     <details className="border-t border-[#E1E4E9] pt-4"><summary className="cursor-pointer text-sm font-medium text-[#1769FF]">View blueprint JSON</summary><pre className="mt-3 max-h-96 overflow-auto rounded-lg bg-[#101724] p-4 text-xs text-white">{JSON.stringify(blueprint, null, 2)}</pre></details>
                     <div className="border-t border-[#E1E4E9] pt-5">
-                      <p className="text-sm leading-6 text-[#687080]">This blueprint is a design. Its generated tools, rules, and connections are not deployed. You can create a voice agent with the currently supported setup below; review and complete its business details first.</p>
-                      <button className="assembler-primary-button mt-4" disabled={blueprintIntent !== businessDescription.trim()} onClick={openCompatibleCreation} type="button">Continue with compatible voice agent</button>
+                      <p className="text-sm leading-6 text-[#687080]">This blueprint is a design until you create the agent. Creation installs its approved voice tool contracts; external actions still need real connections. Review the business details before continuing.</p>
+                      <button className="assembler-primary-button mt-4" disabled={blueprintIntent !== businessDescription.trim()} onClick={openCompatibleCreation} type="button">Configure blueprint agent</button>
                     </div>
                   </section>
                 ) : null}
@@ -814,9 +817,9 @@ export default function Home() {
                     <div className="flex items-center gap-3">
                       <span className="assembler-step-number">02</span>
                       <div>
-                        <h3 className="font-semibold">Review compatible voice agent</h3>
+                        <h3 className="font-semibold">Review blueprint agent setup</h3>
                         <p className="text-sm text-[#687080]">
-                          Complete the supported business setup. Blueprint tools and rules are not included in this agent.
+                          Complete the business details. External connections can be configured in Agent Studio after creation.
                         </p>
                       </div>
                     </div>
@@ -947,7 +950,7 @@ export default function Home() {
                       Assembly complete
                     </p>
                     <h2 className="mt-1 text-lg font-semibold">
-                      {createdAgent.name ?? "Your agent"} is ready to test
+                      {createdAgent.name ?? "Your agent"} was created
                     </h2>
                   </div>
                 </div>
@@ -963,6 +966,7 @@ export default function Home() {
                   <Link className="assembler-secondary-button" href="/dashboard">
                     Open dashboard
                   </Link>
+                  {createdAgent.blueprint && createdAgent.id ? <Link className="assembler-secondary-button" href={`/agents/${createdAgent.id}/blueprint`}>Configure connections</Link> : null}
                 </div>
               </div>
               <div className="grid gap-5 p-5 sm:grid-cols-2 sm:p-7 lg:grid-cols-4">

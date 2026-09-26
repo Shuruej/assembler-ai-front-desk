@@ -1,4 +1,5 @@
 const ASSEMBLYAI_AGENTS_BASE_URL = "https://agents.assemblyai.com";
+import type { AgentBlueprint } from "@/lib/assembler/blueprint";
 
 export type CreateAssemblyAIAgentInput = {
   name: string;
@@ -12,6 +13,7 @@ export type CreateAssemblyAIAgentInput = {
   timezone?: string | null;
   confirmationCallEnabled?: boolean | null;
   feedbackEnabled?: boolean | null;
+  blueprint?: AgentBlueprint | null;
 };
 
 export type AssemblyAIAgent = {
@@ -267,10 +269,31 @@ export function buildSystemPrompt({
   ].join(" ");
 }
 
+function buildBlueprintSystemPrompt(input: CreateAssemblyAIAgentInput): string {
+  const blueprint = input.blueprint!;
+  const timezone = normalizeTimezone(input.timezone);
+  const openDays = getBusinessDayCodesForPrompt(input.businessDays);
+  const closedDays = ORDERED_DAY_CODES.filter((day) => !openDays.includes(day));
+  return [
+    `You are ${blueprint.identity.name}, ${blueprint.identity.role} for ${input.businessName}.`,
+    `Objective: ${blueprint.objective}`,
+    `Greeting: ${blueprint.greeting}`,
+    `Business schedule: open ${formatDayCodesForPrompt(openDays)}, ${input.businessHoursStart || "hours not specified"} to ${input.businessHoursEnd || "hours not specified"} (${timezone}); closed ${formatDayCodesForPrompt(closedDays)}. Answer schedule questions only from this information.`,
+    `Behavior: ${blueprint.behavior.instructions.join(" ")}`,
+    `Knowledge required: ${blueprint.knowledge.requirements.join("; ") || "No additional knowledge provided"}. If a required fact is missing, ask or offer human follow-up; do not invent it.`,
+    input.businessKnowledge ? `Verified business knowledge: ${input.businessKnowledge}` : "No additional verified business knowledge was provided.",
+    `Collect only relevant details: ${blueprint.dataFields.map((field) => `${field.label} (${field.key})`).join(", ") || "none"}.`,
+    `Available tools: ${blueprint.tools.map((tool) => `${tool.id}: ${tool.description}`).join("; ") || "none"}. Call tools only for their stated purpose. Do not claim an action succeeded until its tool result confirms it.`,
+    `Rules: ${blueprint.rules.map((rule) => rule.description).join("; ") || "none"}.`,
+    `Expected outcomes: ${blueprint.outcomes.map((outcome) => outcome.label).join(", ") || "none"}.`,
+    "Keep answers brief and natural for voice. Read sensitive details back and obtain explicit confirmation before making a booking or sending data to an external system.",
+  ].join(" ");
+}
+
 export function buildRuntimeSystemPrompt(input: CreateAssemblyAIAgentInput): string {
   const normalizedTimezone = normalizeTimezone(input.timezone);
   return [
-    buildSystemPrompt(input),
+    input.blueprint ? buildBlueprintSystemPrompt(input) : buildSystemPrompt(input),
     `Current local date and time for this call: ${formatCurrentLocalDateTime(normalizedTimezone)} (${normalizedTimezone}).`,
     "Resolve relative date phrases such as today, tomorrow, next Wednesday, and this Friday against that current local date and timezone. Do not use model memory or any hardcoded date for relative dates.",
   ].join(" ");
@@ -288,7 +311,26 @@ function buildFrontDeskAgentConfig({
   timezone,
   confirmationCallEnabled,
   feedbackEnabled,
+  blueprint,
 }: CreateAssemblyAIAgentInput): FrontDeskAgentConfig {
+  if (blueprint) {
+    return {
+      name: blueprint.identity.name,
+      system_prompt: buildBlueprintSystemPrompt({ name, businessName, industry, agentPurpose, businessKnowledge, businessHoursStart, businessHoursEnd, businessDays, timezone, confirmationCallEnabled, feedbackEnabled, blueprint }),
+      greeting: blueprint.greeting,
+      voice: { voice_id: "alba" },
+      tools: blueprint.tools.map((tool) => ({
+        type: "function" as const,
+        name: tool.id,
+        description: tool.description,
+        parameters: {
+          type: "object" as const,
+          properties: Object.fromEntries(tool.inputs.map((input) => [input.key, { type: input.type, description: input.description }])),
+          required: tool.inputs.filter((input) => input.required).map((input) => input.key),
+        },
+      })),
+    };
+  }
   const normalizedPurpose = normalizePurpose(agentPurpose);
 
   return {
@@ -441,6 +483,7 @@ export async function createAssemblyAIAgent({
   timezone,
   confirmationCallEnabled,
   feedbackEnabled,
+  blueprint,
 }: CreateAssemblyAIAgentInput): Promise<AssemblyAIAgent> {
   const response = await fetch(`${ASSEMBLYAI_AGENTS_BASE_URL}/v1/agents`, {
     method: "POST",
@@ -460,6 +503,7 @@ export async function createAssemblyAIAgent({
       timezone,
       confirmationCallEnabled,
       feedbackEnabled,
+      blueprint,
     })),
   });
 

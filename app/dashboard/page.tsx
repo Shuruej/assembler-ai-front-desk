@@ -4,8 +4,10 @@ import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import { AssemblerLogo } from "@/components/assembler/AssemblerLogo";
 import type { AgentFollowUpPreferences } from "@/lib/follow-up-preferences";
+import type { AgentBlueprint } from "@/lib/assembler/blueprint";
 
 type Agent = {
+  blueprint?: AgentBlueprint | null;
   confirmation_call_enabled?: boolean | null;
   feedback_enabled?: boolean | null;
   google_calendar_connected?: boolean | null;
@@ -629,6 +631,11 @@ export default function DashboardPage() {
               >
                 Test Agent
               </Link>
+              {selectedAgent?.blueprint ? (
+                <Link className="studio-nav-item" href={`/agents/${selectedAgent.id}/blueprint`}>
+                  Blueprint &amp; tools
+                </Link>
+              ) : null}
               {selectedAgent ? (
                 <Link className="studio-nav-item" href={`/agents/${selectedAgent.id}/edit`}>
                   Edit Agent
@@ -724,6 +731,11 @@ export default function DashboardPage() {
                 {selectedAgent ? (
                   <Link className="assembler-secondary-button" href={`/agents/${selectedAgent.id}/edit`}>
                     Edit agent
+                  </Link>
+                ) : null}
+                {selectedAgent?.blueprint ? (
+                  <Link className="assembler-secondary-button" href={`/agents/${selectedAgent.id}/blueprint`}>
+                    Open blueprint
                   </Link>
                 ) : null}
                 <Link

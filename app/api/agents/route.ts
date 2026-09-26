@@ -1,4 +1,5 @@
 import { createAssemblyAIAgent } from "@/lib/assemblyai/client";
+import { BlueprintValidationError, validateAgentBlueprint, type AgentBlueprint } from "@/lib/assembler/blueprint";
 import { createSupabaseServiceRoleClient } from "@/lib/supabase/server";
 import {
   normalizeAgentFollowUpPreferences,
@@ -6,6 +7,7 @@ import {
 } from "@/lib/follow-up-preferences";
 
 type CreateAgentRequestBody = {
+  blueprint?: unknown;
   business_name?: unknown;
   industry?: unknown;
   name?: unknown;
@@ -20,6 +22,9 @@ type CreateAgentRequestBody = {
   confirmation_call_enabled?: boolean | null;
   feedback_enabled?: boolean | null;
 };
+
+const PUBLIC_AGENT_COLUMNS = "id,business_name,industry,name,agent_purpose,business_knowledge,business_hours_start,business_hours_end,business_days,appointment_duration_minutes,timezone,assemblyai_agent_id,confirmation_call_enabled,feedback_enabled,google_calendar_connected,created_at,blueprint";
+const LEGACY_AGENT_COLUMNS = "id,business_name,industry,name,agent_purpose,business_knowledge,business_hours_start,business_hours_end,business_days,appointment_duration_minutes,timezone,assemblyai_agent_id,confirmation_call_enabled,feedback_enabled,google_calendar_connected,created_at";
 
 const DEFAULT_BUSINESS_DAYS = "mon,tue,wed,thu,fri,sat,sun";
 const DEFAULT_BUSINESS_HOURS_START = "09:00";
@@ -202,10 +207,15 @@ function buildInitialAgentSlots(
 
 export async function GET() {
   const supabase = createSupabaseServiceRoleClient();
-  const { data: agents, error } = await supabase
+  let { data: agents, error } = await supabase
     .from("agents")
-    .select("*")
+    .select(PUBLIC_AGENT_COLUMNS)
     .order("created_at", { ascending: false });
+  if (error?.code === "42703" || error?.code === "PGRST204") {
+    const fallback = await supabase.from("agents").select(LEGACY_AGENT_COLUMNS).order("created_at", { ascending: false });
+    agents = fallback.data?.map((agent) => ({ ...agent, blueprint: null })) ?? null;
+    error = fallback.error;
+  }
 
   if (error) {
     return Response.json({ error: error.message }, { status: 500 });
@@ -239,6 +249,7 @@ export async function POST(request: Request) {
   let businessDays: string;
   let appointmentDurationMinutes: number;
   let timezone: string | null;
+  let blueprint: AgentBlueprint | null = null;
 
   try {
     industry = normalizeOptionalString(body.industry, "industry");
@@ -262,9 +273,10 @@ export async function POST(request: Request) {
       body.appointment_duration_minutes,
     );
     timezone = normalizeOptionalString(body.timezone, "timezone");
+    if (body.blueprint != null) blueprint = validateAgentBlueprint(body.blueprint);
   } catch (error) {
     return Response.json(
-      { error: error instanceof Error ? error.message : "Invalid request body." },
+      { error: error instanceof BlueprintValidationError ? "Invalid agent blueprint." : error instanceof Error ? error.message : "Invalid request body." },
       { status: 400 },
     );
   }
@@ -288,6 +300,20 @@ export async function POST(request: Request) {
         : uiPreferences.collect_feedback_after_confirmation,
   });
 
+  // Do not mint a remote voice agent if the additive Assembler migration is absent.
+  if (blueprint) {
+    const storage = createSupabaseServiceRoleClient();
+    const checks = await Promise.all([
+      storage.from("agents").select("blueprint").limit(0),
+      storage.from("agent_records").select("id").limit(0),
+      storage.from("agent_tool_logs").select("id").limit(0),
+      storage.from("agent_connections").select("id").limit(0),
+    ]);
+    if (checks.some((check) => check.error)) {
+      return Response.json({ error: "Assembler storage is not ready. Apply the new Supabase migration before creating a blueprint agent." }, { status: 503 });
+    }
+  }
+
   try {
     const assemblyAIAgent = await createAssemblyAIAgent({
       businessName,
@@ -301,6 +327,7 @@ export async function POST(request: Request) {
       timezone,
       confirmationCallEnabled: preferences.confirmation_call_enabled,
       feedbackEnabled: preferences.feedback_enabled,
+      blueprint,
     });
 
     const supabase = createSupabaseServiceRoleClient();
@@ -319,8 +346,9 @@ export async function POST(request: Request) {
         timezone,
         assemblyai_agent_id: assemblyAIAgent.id,
         ...preferences,
+        ...(blueprint ? { blueprint } : {}),
       })
-      .select()
+      .select(LEGACY_AGENT_COLUMNS)
       .single();
 
     if (error) {
@@ -347,7 +375,7 @@ export async function POST(request: Request) {
       console.error("Failed to create initial agent slots.", slotError);
     }
 
-    return Response.json(agent, { status: 201 });
+    return Response.json(blueprint ? { ...agent, blueprint } : agent, { status: 201 });
   } catch (error) {
     return Response.json(
       {

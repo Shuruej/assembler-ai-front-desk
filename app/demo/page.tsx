@@ -24,6 +24,7 @@ type CallStartResponse = {
   feedback_enabled?: boolean;
   session_prompt?: string;
   timezone?: string;
+  uses_blueprint?: boolean;
 };
 
 type VoiceAgentMessage = {
@@ -138,6 +139,7 @@ function DemoPageContent() {
   const stopRequestedRef = useRef(false);
   const shouldAutoEndAfterReplyRef = useRef(false);
   const sessionPromptRef = useRef<string | null>(null);
+  const blueprintModeRef = useRef(false);
 
   function addTranscript(entry: TranscriptEntry) {
     setTranscript((current) => [...current, entry]);
@@ -283,6 +285,7 @@ function DemoPageContent() {
     stopRequestedRef.current = false;
     shouldAutoEndAfterReplyRef.current = false;
     sessionPromptRef.current = null;
+    blueprintModeRef.current = false;
     setIsCalling(false);
     setStatus(nextStatus);
   }
@@ -311,6 +314,7 @@ function DemoPageContent() {
   }
 
   async function handleToolCall(message: VoiceAgentMessage) {
+    const usesBlueprint = blueprintModeRef.current;
     const supportedToolNames = new Set([
       "capture_lead",
       "escalate_to_human",
@@ -318,7 +322,7 @@ function DemoPageContent() {
       "book_slot",
     ]);
 
-    if (!message.name || !supportedToolNames.has(message.name)) return;
+    if (!message.name || (!usesBlueprint && !supportedToolNames.has(message.name))) return;
     const isEscalation = message.name === "escalate_to_human";
     const isAvailabilityCheck = message.name === "check_availability";
     const isSlotBooking = message.name === "book_slot";
@@ -337,7 +341,9 @@ function DemoPageContent() {
       resultPayload = { success: false, error: "No active call on record." };
     } else {
       try {
-        const endpoint = isEscalation
+        const endpoint = usesBlueprint
+          ? "/api/agents/tools/execute"
+          : isEscalation
           ? "/api/leads/escalate"
           : isAvailabilityCheck
             ? "/api/availability/check"
@@ -347,7 +353,7 @@ function DemoPageContent() {
         const response = await fetch(endpoint, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
+          body: JSON.stringify(usesBlueprint ? { call_id: dbCallId, tool_id: message.name, arguments: args } : {
             call_id: dbCallId,
             ...(isAvailabilityCheck
               ? { requested_date: args.requested_date }
@@ -376,11 +382,15 @@ function DemoPageContent() {
         if (!response.ok) {
           resultPayload = { success: false, error: data.error ?? "Tool request failed." };
         } else {
-          resultPayload = isAvailabilityCheck
+          resultPayload = usesBlueprint
+            ? data
+            : isAvailabilityCheck
             ? { success: true, available_times: data.available_times ?? [] }
             : { success: true, lead_id: data.id, booking_id: data.booking_id };
 
-          if (!isAvailabilityCheck) {
+          if (usesBlueprint) {
+            addTranscript({ id: `system-tool-${Date.now()}`, role: "system", text: `${message.name} completed.${data.outcome ? ` Outcome: ${data.outcome}.` : ""}` });
+          } else if (!isAvailabilityCheck) {
             addTranscript({
               id: `system-lead-${Date.now()}`,
               role: "system",
@@ -477,6 +487,7 @@ function DemoPageContent() {
 
       dbCallIdRef.current = callStartData.id;
       sessionPromptRef.current = callStartData.session_prompt ?? null;
+      blueprintModeRef.current = callStartData.uses_blueprint === true;
 
       setStatus("Requesting microphone...");
 

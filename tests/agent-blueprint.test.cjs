@@ -16,7 +16,7 @@ const valid = () => ({
   version: '1', identity: { name: 'Mira', role: 'Support agent' }, objective: 'Answer support questions', greeting: 'Hello, how can I help?',
   behavior: { instructions: ['Ask before making changes'] }, knowledge: { requirements: ['Product policies'] },
   dataFields: [{ key: 'order_id', label: 'Order ID', type: 'string', description: 'The customer order reference', required: true, options: [] }],
-  tools: [{ id: 'lookup_order', name: 'Look up order', description: 'Read order status', kind: 'http', inputs: [{ key: 'order_id', type: 'string', description: 'Order reference', required: true }], expectedResult: 'Order status', connectionId: 'order_api' }],
+  tools: [{ id: 'lookup_order', name: 'Look up order', description: 'Read order status', kind: 'http', operation: 'http_request', inputs: [{ key: 'order_id', type: 'string', description: 'Order reference', required: true }], expectedResult: 'Order status', connectionId: 'order_api', outcomeId: 'question_answered' }],
   connections: [{ id: 'order_api', name: 'Order API', kind: 'http', reason: 'Retrieve order status', required: true }],
   rules: [{ id: 'missing_order', description: 'Ask for an order ID', source: 'order_id', operator: 'exists', value: null, action: 'require_confirmation', target: null }],
   outcomes: [{ id: 'question_answered', label: 'Question answered', description: 'Customer received the requested answer' }],

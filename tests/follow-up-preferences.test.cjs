@@ -47,6 +47,7 @@ function database(rows) {
 
 function route(file, db) {
   return load(file, {
+    '@/lib/assembler/blueprint': { validateAgentBlueprint: value => value },
     '@/lib/follow-up-preferences': prefs,
     '@/lib/supabase/server': { createSupabaseServiceRoleClient: () => db },
     '@/lib/sms': { logSimulatedSms: async () => {} },
@@ -230,6 +231,7 @@ test('inbound tool result flushes once whether api completion or reply.done happ
       handledToolCallsRef: { current: new Set() },
       toolTurnVersionRef: { current: 0 },
       pendingToolResultsRef: { current: [] },
+      blueprintModeRef: { current: false },
       toolResultWindowOpenRef: { current: false },
       addTranscript() {},
       fetch: fetchImpl,
@@ -264,6 +266,32 @@ test('inbound tool result flushes once whether api completion or reply.done happ
 
   await scope.handleToolCall({ name: 'capture_lead', call_id: 'tool-2', arguments: {} });
   assert.equal(slowSent.length, 1);
+});
+
+test('blueprint tool uses the same queued result window and original call id', async () => {
+  const scope = pageFunctions('app/demo/page.tsx', ['handleToolCall', 'flushPendingToolResults']);
+  const sent = [];
+  const requests = [];
+  Object.assign(scope, {
+    WebSocket: { OPEN: 1 },
+    wsRef: { current: { readyState: 1, send: value => sent.push(JSON.parse(value)) } },
+    dbCallIdRef: { current: 'database-call' },
+    stopRequestedRef: { current: false },
+    handledToolCallsRef: { current: new Set() },
+    toolTurnVersionRef: { current: 0 },
+    pendingToolResultsRef: { current: [] },
+    blueprintModeRef: { current: true },
+    toolResultWindowOpenRef: { current: false },
+    addTranscript() {},
+    fetch: async (url, options) => { requests.push({ url, body: JSON.parse(options.body) }); return { ok: true, json: async () => ({ success: true, data: { id: 'record' } }) }; },
+  });
+  await scope.handleToolCall({ name: 'save_order', call_id: 'assembly-call-17', arguments: { order_id: 'A1' } });
+  assert.deepEqual(plain(requests[0]), { url: '/api/agents/tools/execute', body: { call_id: 'database-call', tool_id: 'save_order', arguments: { order_id: 'A1' } } });
+  assert.equal(sent.length, 0);
+  scope.toolResultWindowOpenRef.current = true;
+  scope.flushPendingToolResults();
+  assert.equal(sent.length, 1);
+  assert.equal(sent[0].call_id, 'assembly-call-17');
 });
 
 test('dashboard shows off stages, preserving completed bookings and ratings', () => {
