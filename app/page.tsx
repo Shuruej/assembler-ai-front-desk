@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { FormEvent, KeyboardEvent, useRef, useState } from "react";
+import { AssemblerLogo } from "@/components/assembler/AssemblerLogo";
 import {
   DEFAULT_FOLLOW_UP_PREFERENCES,
   type FollowUpPreferences,
@@ -99,28 +100,6 @@ function formatPurpose(value?: string | null): string {
   return (
     AGENT_PURPOSE_OPTIONS.find((purpose) => purpose.value === value)?.label ??
     "General receptionist"
-  );
-}
-
-function AssemblerMark() {
-  return (
-    <svg
-      aria-hidden="true"
-      className="h-8 w-8"
-      fill="none"
-      viewBox="0 0 32 32"
-      xmlns="http://www.w3.org/2000/svg"
-    >
-      <rect fill="#1769FF" height="9" rx="2" width="9" x="3" y="3" />
-      <rect fill="#0B4ED0" height="9" rx="2" width="9" x="20" y="3" />
-      <rect fill="#42C7D5" height="9" rx="2" width="9" x="3" y="20" />
-      <rect fill="#1769FF" height="9" rx="2" width="9" x="20" y="20" />
-      <path
-        d="M12 7.5h8M7.5 12v8M24.5 12v8M12 24.5h8"
-        stroke="#17191D"
-        strokeWidth="1.5"
-      />
-    </svg>
   );
 }
 
@@ -549,15 +528,7 @@ export default function Home() {
             className="flex items-center gap-3 rounded-lg focus:outline-none focus-visible:ring-2 focus-visible:ring-[#1769FF] focus-visible:ring-offset-4"
             href="/"
           >
-            <AssemblerMark />
-            <span>
-              <span className="block text-[15px] font-semibold tracking-[-0.01em]">
-                Assembler
-              </span>
-              <span className="hidden text-[11px] text-[#687080] sm:block">
-                Voice agent studio
-              </span>
-            </span>
+            <AssemblerLogo subtitle="Voice agent studio" />
           </Link>
           <div className="flex items-center gap-1 sm:gap-2">
             <Link className="assembler-nav-link" href="/dashboard">

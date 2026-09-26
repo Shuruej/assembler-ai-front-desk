@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
+import { AssemblerLogo } from "@/components/assembler/AssemblerLogo";
 import type { AgentFollowUpPreferences } from "@/lib/follow-up-preferences";
 
 type Agent = {
@@ -14,6 +15,11 @@ type Agent = {
   name: string | null;
   agent_purpose: string | null;
   business_knowledge: string | null;
+  business_hours_start?: string | null;
+  business_hours_end?: string | null;
+  business_days?: string | null;
+  timezone?: string | null;
+  appointment_duration_minutes?: number | null;
   assemblyai_agent_id: string | null;
   created_at: string | null;
 };
@@ -160,6 +166,35 @@ function formatKnowledgePreview(value: string | null): string {
   const compact = value.trim().replace(/\s+/g, " ");
 
   return compact.length > 220 ? `${compact.slice(0, 220)}...` : compact;
+}
+
+const BUSINESS_DAY_NAMES: Record<string, string> = {
+  mon: "Mon",
+  tue: "Tue",
+  wed: "Wed",
+  thu: "Thu",
+  fri: "Fri",
+  sat: "Sat",
+  sun: "Sun",
+};
+
+function formatBusinessDays(value?: string | null): string {
+  if (!value) return "Not recorded";
+
+  const days = value
+    .split(",")
+    .map((day) => BUSINESS_DAY_NAMES[day.trim().toLowerCase()])
+    .filter(Boolean);
+
+  return days.length > 0 ? days.join(", ") : "Not recorded";
+}
+
+function formatBusinessHours(agent: Agent): string {
+  if (!agent.business_hours_start || !agent.business_hours_end) {
+    return "Not recorded";
+  }
+
+  return `${agent.business_hours_start}–${agent.business_hours_end}`;
 }
 
 function getBadgeClass(value: string | null): string {
@@ -363,6 +398,9 @@ export default function DashboardPage() {
   const [expandedCallIds, setExpandedCallIds] = useState<Set<string>>(
     () => new Set(),
   );
+  const [activeSection, setActiveSection] = useState<"overview" | "calls">(
+    "overview",
+  );
   const [detailsRefreshKey, setDetailsRefreshKey] = useState(0);
   const [isLoadingAgents, setIsLoadingAgents] = useState(true);
   const [isLoadingDetails, setIsLoadingDetails] = useState(false);
@@ -551,164 +589,266 @@ export default function DashboardPage() {
   }
 
   return (
-    <main className="min-h-screen bg-zinc-50 px-6 py-8 text-zinc-950">
-      <div className="mx-auto flex max-w-6xl flex-col gap-6">
-        <header className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
-          <div>
-            <h1 className="text-3xl font-semibold">AI Front Desk Dashboard</h1>
-            <p className="mt-2 text-sm text-zinc-600">
-              Review captured calls, leads, and optional booking workflows for
-              each purpose-driven voice agent.
-            </p>
-          </div>
-          <Link
-            className="inline-flex w-fit rounded-md bg-zinc-950 px-4 py-2 text-sm font-medium text-white"
-            href="/demo"
-          >
-            Start test call
-          </Link>
-        </header>
+    <main className="assembler-studio min-h-screen bg-[#F7F8FA] text-[#17191D]">
+      <div className="min-h-screen lg:grid lg:grid-cols-[16rem_minmax(0,1fr)]">
+        <aside className="border-b border-[#DDE1E8] bg-white lg:sticky lg:top-0 lg:h-screen lg:border-b-0 lg:border-r">
+          <div className="flex h-full flex-col px-4 py-4 lg:px-5 lg:py-5">
+            <Link
+              className="w-fit rounded-lg focus:outline-none focus-visible:ring-2 focus-visible:ring-[#1769FF] focus-visible:ring-offset-4"
+              href="/"
+            >
+              <AssemblerLogo subtitle="Agent Studio" />
+            </Link>
 
-        {error ? (
-          <section className="rounded-lg border border-red-200 bg-red-50 p-4 text-sm text-red-700">
-            {error}
-          </section>
-        ) : null}
-
-        <div className="grid min-w-0 gap-6 lg:grid-cols-[18rem_minmax(0,1fr)]">
-          <aside className="rounded-lg border border-zinc-200 bg-white p-4">
-            <h2 className="text-sm font-semibold uppercase tracking-wide text-zinc-500">
-              Agents
-            </h2>
-
-            <div className="mt-4 flex flex-col gap-2">
-              {isLoadingAgents ? (
-                <p className="text-sm text-zinc-500">Loading agents...</p>
-              ) : agents.length === 0 ? (
-                <p className="text-sm text-zinc-500">No agents found.</p>
+            <nav aria-label="Studio navigation" className="mt-6 grid gap-1 sm:grid-cols-5 lg:grid-cols-1">
+              <a
+                className={`studio-nav-item ${
+                  activeSection === "overview" ? "studio-nav-item-active" : ""
+                }`}
+                href="#overview"
+                onClick={() => setActiveSection("overview")}
+              >
+                Overview
+              </a>
+              <a
+                className={`studio-nav-item ${
+                  activeSection === "calls" ? "studio-nav-item-active" : ""
+                }`}
+                href="#calls-leads"
+                onClick={() => setActiveSection("calls")}
+              >
+                Calls &amp; Leads
+              </a>
+              <Link
+                className="studio-nav-item"
+                href={
+                  selectedAgent?.assemblyai_agent_id
+                    ? getDemoHref(selectedAgent.assemblyai_agent_id)
+                    : "/demo"
+                }
+              >
+                Test Agent
+              </Link>
+              {selectedAgent ? (
+                <Link className="studio-nav-item" href={`/agents/${selectedAgent.id}/edit`}>
+                  Edit Agent
+                </Link>
               ) : (
-                agents.map((agent) => {
-                  const isSelected = agent.id === selectedAgentId;
+                <span className="studio-nav-item cursor-not-allowed opacity-45">
+                  Edit Agent
+                </span>
+              )}
+              <Link className="studio-nav-item" href="/#create-agent">
+                Create Agent
+              </Link>
+            </nav>
 
-                  return (
-                    <div
-                      className={`flex items-start gap-3 rounded-md border p-3 ${
-                        isSelected
-                          ? "border-zinc-950 bg-zinc-100"
-                          : "border-zinc-200 bg-white hover:bg-zinc-50"
-                      }`}
-                      key={agent.id}
-                    >
+            <div className="mt-6 min-h-0 border-t border-[#E1E4E9] pt-5 lg:flex-1 lg:overflow-y-auto">
+              <div className="flex items-center justify-between gap-3">
+                <h2 className="text-xs font-semibold uppercase tracking-[0.14em] text-[#7A8290]">
+                  Your agents
+                </h2>
+                <span className="font-mono text-[11px] text-[#8B93A1]">
+                  {agents.length}
+                </span>
+              </div>
+
+              <div className="mt-3 flex gap-2 overflow-x-auto pb-1 lg:flex-col lg:overflow-visible">
+                {isLoadingAgents ? (
+                  <p className="text-sm text-[#687080]">Loading agents...</p>
+                ) : agents.length === 0 ? (
+                  <div className="rounded-xl border border-dashed border-[#C8CED8] p-4">
+                    <p className="text-sm font-medium">No agents yet.</p>
+                    <Link className="mt-3 inline-flex text-sm font-semibold text-[#0B4ED0]" href="/#create-agent">
+                      Create your first agent
+                    </Link>
+                  </div>
+                ) : (
+                  agents.map((agent) => {
+                    const isSelected = agent.id === selectedAgentId;
+
+                    return (
                       <button
-                        className="min-w-0 flex-1 text-left"
+                        aria-pressed={isSelected}
+                        className={`min-w-52 rounded-xl border p-3 text-left transition lg:min-w-0 ${
+                          isSelected
+                            ? "border-[#1769FF] bg-[#F0F5FF] shadow-[0_4px_14px_rgba(23,105,255,0.08)]"
+                            : "border-[#DDE1E8] bg-white hover:border-[#AEB7C5] hover:bg-[#FAFBFC]"
+                        }`}
+                        key={agent.id}
                         onClick={() => setSelectedAgentId(agent.id)}
                         type="button"
                       >
-                        <div className="text-sm font-semibold">
+                        <span className="flex items-center gap-2">
+                          <span
+                            aria-hidden="true"
+                            className={`h-2 w-2 shrink-0 rounded-full ${isSelected ? "bg-[#1769FF]" : "bg-[#C8CED8]"}`}
+                          />
+                          <span className="truncate text-sm font-semibold">
+                            {displayValue(agent.name)}
+                          </span>
+                        </span>
+                        <span className="mt-1 block truncate pl-4 text-xs text-[#687080]">
                           {displayValue(agent.business_name)}
-                        </div>
-                        <div className="mt-1 text-xs text-zinc-500">
-                          {displayValue(agent.industry)}
-                        </div>
-                        <div className="mt-1 text-xs font-medium capitalize text-zinc-600">
-                          {formatPurpose(agent.agent_purpose)}
-                        </div>
-                        <div className="mt-1 text-sm text-zinc-700">
-                          {displayValue(agent.name)}
-                        </div>
+                        </span>
                       </button>
-                      {agent.assemblyai_agent_id ? (
-                        <Link
-                          className="shrink-0 rounded-md border border-zinc-300 bg-white px-2 py-1 text-xs font-medium text-zinc-700 hover:bg-zinc-100"
-                          href={getDemoHref(agent.assemblyai_agent_id)}
-                        >
-                          Test
-                        </Link>
-                      ) : null}
-                    </div>
-                  );
-                })
-              )}
+                    );
+                  })
+                )}
+              </div>
             </div>
-          </aside>
 
-          <div className="flex min-w-0 flex-col gap-6">
-            {!selectedAgent ? (
-              <section className="rounded-lg border border-zinc-200 bg-white p-8 text-center">
-                <h2 className="text-lg font-semibold">Select an agent</h2>
-                <p className="mt-2 text-sm text-zinc-500">
-                  Choose an agent from the list to view captured calls and leads.
+            <Link className="assembler-primary-button mt-4 hidden w-full lg:inline-flex" href="/#create-agent">
+              Create agent
+            </Link>
+          </div>
+        </aside>
+
+        <div className="min-w-0">
+          <header className="border-b border-[#DDE1E8] bg-white px-4 py-5 sm:px-6 lg:px-8">
+            <div className="mx-auto flex max-w-[90rem] flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+              <div>
+                <p className="text-xs font-semibold uppercase tracking-[0.14em] text-[#1769FF]">
+                  {selectedAgent ? displayValue(selectedAgent.business_name) : "Assembler Studio"}
                 </p>
+                <h1 className="mt-1 text-2xl font-semibold tracking-[-0.025em] sm:text-3xl">
+                  {selectedAgent ? displayValue(selectedAgent.name) : "Agent Studio"}
+                </h1>
+                <p className="mt-1 text-sm text-[#687080]">
+                  {selectedAgent
+                    ? `${formatPurpose(selectedAgent.agent_purpose)} · ${displayValue(selectedAgent.industry)}`
+                    : "Select an agent to inspect its operation, calls, and customer outcomes."}
+                </p>
+              </div>
+              <div className="flex flex-wrap gap-2">
+                {selectedAgent ? (
+                  <Link className="assembler-secondary-button" href={`/agents/${selectedAgent.id}/edit`}>
+                    Edit agent
+                  </Link>
+                ) : null}
+                <Link
+                  className="assembler-primary-button"
+                  href={
+                    selectedAgent?.assemblyai_agent_id
+                      ? getDemoHref(selectedAgent.assemblyai_agent_id)
+                      : "/demo"
+                  }
+                >
+                  Test agent
+                </Link>
+              </div>
+            </div>
+          </header>
+
+          <div className="mx-auto flex max-w-[90rem] min-w-0 flex-col gap-5 px-4 py-6 sm:px-6 lg:px-8 lg:py-8">
+            {error ? (
+              <section className="rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-700" role="alert">
+                {error}
+              </section>
+            ) : null}
+
+            {!selectedAgent ? (
+              <section className="assembler-panel rounded-2xl p-8 text-center sm:p-12">
+                <span className="assembler-step-number mx-auto">01</span>
+                <h2 className="mt-4 text-xl font-semibold">
+                  {agents.length === 0 ? "No agents yet" : "Select an agent"}
+                </h2>
+                <p className="mx-auto mt-2 max-w-md text-sm leading-6 text-[#687080]">
+                  {agents.length === 0
+                    ? "Create an agent from a business workflow to begin testing calls and capturing customer outcomes."
+                    : "Choose an agent in the sidebar to open its overview, calls, leads, and configuration."}
+                </p>
+                {agents.length === 0 ? (
+                  <Link className="assembler-primary-button mt-5" href="/#create-agent">
+                    Create agent
+                  </Link>
+                ) : null}
               </section>
             ) : (
               <>
-                <section className="min-w-0 rounded-lg border border-zinc-200 bg-white p-4">
+                <section className="assembler-panel min-w-0 rounded-2xl p-5 sm:p-6" id="overview">
                   <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
                     <div>
-                      <h2 className="text-xl font-semibold">
-                        {displayValue(selectedAgent.business_name)}
-                      </h2>
-                      <p className="mt-1 text-sm text-zinc-500">
-                        {displayValue(selectedAgent.name)} -{" "}
-                        {displayValue(selectedAgent.industry)}
+                      <p className="text-xs font-semibold uppercase tracking-[0.14em] text-[#687080]">
+                        Configuration
                       </p>
-                      <div className="mt-4 grid gap-3 sm:grid-cols-2">
-                        <div className="rounded-md border border-zinc-200 bg-zinc-50 p-3">
-                          <div className="text-xs font-semibold uppercase text-zinc-500">
-                            Purpose
-                          </div>
-                          <p className="mt-1 text-sm capitalize text-zinc-800">
-                            {formatPurpose(selectedAgent.agent_purpose)}
-                          </p>
-                        </div>
-                        <div className="rounded-md border border-zinc-200 bg-zinc-50 p-3">
-                          <div className="text-xs font-semibold uppercase text-zinc-500">
-                            Knowledge preview
-                          </div>
-                          <p className="mt-1 line-clamp-3 text-sm text-zinc-700">
-                            {formatKnowledgePreview(
-                              selectedAgent.business_knowledge,
-                            )}
-                          </p>
-                        </div>
+                      <h2 className="mt-1 text-xl font-semibold tracking-[-0.02em]">
+                        How this agent operates
+                      </h2>
+                    </div>
+                    {selectedAgent.google_calendar_connected ? (
+                      <span className="inline-flex w-fit rounded-lg border border-[#B7E2DA] bg-[#ECF9F6] px-2.5 py-1.5 text-xs font-semibold text-[#287C70]">
+                        Google Calendar connected
+                      </span>
+                    ) : (
+                      <a
+                        className="assembler-secondary-button w-fit"
+                        href={`/api/agents/${selectedAgent.id}/google-calendar/connect`}
+                      >
+                        Connect Google Calendar
+                      </a>
+                    )}
+                  </div>
+
+                  <dl className="mt-5 grid gap-px overflow-hidden rounded-xl border border-[#DDE1E8] bg-[#DDE1E8] sm:grid-cols-2 xl:grid-cols-4">
+                    {[
+                      ["Purpose", formatPurpose(selectedAgent.agent_purpose)],
+                      ["Business hours", formatBusinessHours(selectedAgent)],
+                      ["Business days", formatBusinessDays(selectedAgent.business_days)],
+                      ["Timezone", selectedAgent.timezone ?? "Not recorded"],
+                      [
+                        "Appointment length",
+                        selectedAgent.appointment_duration_minutes
+                          ? `${selectedAgent.appointment_duration_minutes} minutes`
+                          : "Not recorded",
+                      ],
+                      [
+                        "Confirmation calls",
+                        followUpPreferences.confirmation_call_enabled ? "Enabled" : "Disabled",
+                      ],
+                      [
+                        "Feedback collection",
+                        followUpPreferences.feedback_enabled ? "Enabled" : "Disabled",
+                      ],
+                      [
+                        "Availability source",
+                        selectedAgent.google_calendar_connected
+                          ? "Google Calendar"
+                          : "Internal schedule",
+                      ],
+                    ].map(([label, value]) => (
+                      <div className="bg-[#FAFBFC] p-3.5" key={label}>
+                        <dt className="text-[11px] font-semibold uppercase tracking-[0.1em] text-[#7A8290]">
+                          {label}
+                        </dt>
+                        <dd className="mt-1.5 text-sm font-medium capitalize text-[#282C34]">
+                          {value}
+                        </dd>
                       </div>
-                    </div>
-                    <div className="flex flex-col gap-2 sm:items-end">
-                      {selectedAgent.google_calendar_connected ? (
-                        <span className="inline-flex w-fit rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1 text-xs font-semibold text-emerald-700">
-                          Google Calendar connected
-                        </span>
-                      ) : (
-                        <a
-                          className="inline-flex w-fit rounded-md border border-zinc-300 bg-white px-4 py-2 text-sm font-medium text-zinc-700 hover:bg-zinc-100"
-                          href={`/api/agents/${selectedAgent.id}/google-calendar/connect`}
-                        >
-                          Connect Google Calendar
-                        </a>
-                      )}
-                      {selectedAgent.assemblyai_agent_id ? (
-                        <Link
-                          className="inline-flex w-fit rounded-md bg-zinc-950 px-4 py-2 text-sm font-medium text-white"
-                          href={getDemoHref(selectedAgent.assemblyai_agent_id)}
-                        >
-                          Test this agent
-                        </Link>
-                      ) : null}
-                    </div>
+                    ))}
+                  </dl>
+
+                  <div className="mt-4 rounded-xl border border-[#DDE1E8] bg-white p-4">
+                    <p className="text-[11px] font-semibold uppercase tracking-[0.1em] text-[#7A8290]">
+                      Business knowledge
+                    </p>
+                    <p className="mt-2 text-sm leading-6 text-[#5F6877]">
+                      {formatKnowledgePreview(selectedAgent.business_knowledge)}
+                    </p>
                   </div>
                 </section>
 
-                <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+                <section aria-label="Agent analytics" className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
                   {analyticsStats.map((stat) => (
                     <div
-                      className="rounded-lg border border-zinc-200 bg-white p-4"
+                      className="rounded-xl border border-[#DDE1E8] bg-white p-4 shadow-[0_5px_18px_rgba(30,41,59,0.04)]"
                       key={stat.label}
                     >
-                      <div className="text-xs font-semibold uppercase tracking-wide text-zinc-500">
+                      <div className="text-[11px] font-semibold uppercase tracking-[0.11em] text-[#7A8290]">
                         {stat.label}
                       </div>
                       <div className="mt-3 flex items-baseline gap-1.5">
-                        <span className="text-3xl font-semibold tracking-tight text-zinc-950">
+                        <span className="text-3xl font-semibold tracking-[-0.035em] text-[#17191D]">
                           {stat.value}
                         </span>
                         {stat.suffix ? (
@@ -724,14 +864,14 @@ export default function DashboardPage() {
                   ))}
                 </section>
 
-                <section className="min-w-0 rounded-lg border border-zinc-200 bg-white p-4">
+                <section className="assembler-panel min-w-0 rounded-2xl p-5">
                   <div className="flex items-center justify-between gap-4">
                     <div>
-                      <h2 className="text-sm font-semibold uppercase tracking-wide text-zinc-500">
-                        Notifications (Simulated)
+                      <h2 className="text-sm font-semibold text-[#282C34]">
+                        Notification log
                       </h2>
-                      <p className="mt-1 text-xs text-zinc-500">
-                        Ready for Twilio integration
+                      <p className="mt-1 text-xs text-[#687080]">
+                        Simulated SMS events generated by this agent
                       </p>
                     </div>
                     {isLoadingDetails ? (
@@ -745,7 +885,7 @@ export default function DashboardPage() {
                         No simulated notifications logged for this agent yet.
                       </p>
                     ) : (
-                      <div className="divide-y divide-zinc-100 rounded-md border border-zinc-200">
+                      <div className="divide-y divide-[#E8EBEF] rounded-xl border border-[#DDE1E8]">
                         {smsLogs.map((smsLog) => (
                           <div className="p-3" key={smsLog.id}>
                             <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
@@ -771,17 +911,20 @@ export default function DashboardPage() {
                   </div>
                 </section>
 
-                <section className="min-w-0 rounded-lg border border-zinc-200 bg-white p-4">
+                <section className="assembler-panel min-w-0 scroll-mt-6 rounded-2xl p-5" id="calls-leads">
                   <div className="flex items-center justify-between gap-4">
-                    <h2 className="text-sm font-semibold uppercase tracking-wide text-zinc-500">
-                      Calls
-                    </h2>
+                    <div>
+                      <p className="text-xs font-semibold uppercase tracking-[0.13em] text-[#1769FF]">
+                        Calls &amp; Leads
+                      </p>
+                      <h2 className="mt-1 text-lg font-semibold">Call history</h2>
+                    </div>
                     <div className="flex items-center gap-3">
                       {isLoadingDetails ? (
                         <span className="text-sm text-zinc-500">Loading...</span>
                       ) : null}
                       <button
-                        className="rounded-md border border-zinc-300 bg-white px-3 py-1.5 text-xs font-medium text-zinc-700 hover:bg-zinc-100 disabled:cursor-not-allowed disabled:text-zinc-400"
+                        className="assembler-secondary-button min-h-0 px-3 py-1.5 text-xs disabled:cursor-not-allowed disabled:opacity-50"
                         disabled={isLoadingDetails}
                         onClick={refreshSelectedAgentDetails}
                         type="button"
@@ -793,12 +936,20 @@ export default function DashboardPage() {
 
                   <div className="mt-4 overflow-x-auto">
                     {calls.length === 0 ? (
-                      <p className="text-sm text-zinc-500">
-                        No calls captured for this agent yet.
-                      </p>
+                      <div className="rounded-xl border border-dashed border-[#C8CED8] bg-[#FAFBFC] p-6 text-center">
+                        <p className="text-sm font-medium text-[#282C34]">No calls yet</p>
+                        <p className="mt-1 text-sm text-[#687080]">
+                          Test this agent to create its first recorded conversation.
+                        </p>
+                        {selectedAgent.assemblyai_agent_id ? (
+                          <Link className="assembler-secondary-button mt-4" href={getDemoHref(selectedAgent.assemblyai_agent_id)}>
+                            Test agent
+                          </Link>
+                        ) : null}
+                      </div>
                     ) : (
                       <table className="w-full min-w-[52rem] text-left text-sm">
-                        <thead className="border-b border-zinc-200 text-xs uppercase text-zinc-500">
+                        <thead className="border-b border-[#DDE1E8] text-[11px] uppercase tracking-[0.08em] text-[#7A8290]">
                           <tr>
                             <th className="py-2 pr-4 font-semibold">Started</th>
                             <th className="py-2 pr-4 font-semibold">Type</th>
@@ -837,7 +988,7 @@ export default function DashboardPage() {
                                   </p>
                                   {isLong ? (
                                     <button
-                                      className="mt-2 text-sm font-medium text-zinc-950 underline"
+                                      className="mt-2 text-sm font-semibold text-[#0B4ED0] underline decoration-[#B6CDFB] underline-offset-4"
                                       onClick={() => toggleTranscript(call.id)}
                                       type="button"
                                     >
@@ -854,16 +1005,14 @@ export default function DashboardPage() {
                   </div>
                 </section>
 
-                <section className="min-w-0 rounded-lg border border-zinc-200 bg-white p-4">
+                <section className="assembler-panel min-w-0 rounded-2xl p-5">
                   <div className="flex items-center justify-between gap-4">
                     <div>
-                      <h2 className="text-sm font-semibold uppercase tracking-wide text-zinc-500">
-                        Leads and follow-ups
+                      <h2 className="text-lg font-semibold text-[#282C34]">
+                        Leads and outcomes
                       </h2>
-                      <p className="mt-1 text-xs text-zinc-500">
-                        Booking and confirmation columns are optional workflow
-                        fields; non-booking agents can use leads for follow-up,
-                        support, product inquiries, qualification, or feedback.
+                      <p className="mt-1 text-xs leading-5 text-[#687080]">
+                        Customer details, follow-up state, bookings, feedback, and escalations.
                       </p>
                     </div>
                     <div className="flex items-center gap-3">
@@ -871,7 +1020,7 @@ export default function DashboardPage() {
                         <span className="text-sm text-zinc-500">Loading...</span>
                       ) : null}
                       <button
-                        className="rounded-md border border-zinc-300 bg-white px-3 py-1.5 text-xs font-medium text-zinc-700 hover:bg-zinc-100 disabled:cursor-not-allowed disabled:text-zinc-400"
+                        className="assembler-secondary-button min-h-0 px-3 py-1.5 text-xs disabled:cursor-not-allowed disabled:opacity-50"
                         disabled={isLoadingDetails}
                         onClick={refreshSelectedAgentDetails}
                         type="button"
@@ -883,12 +1032,15 @@ export default function DashboardPage() {
 
                   <div className="mt-4 overflow-x-auto">
                     {leads.length === 0 ? (
-                      <p className="text-sm text-zinc-500">
-                        No leads captured for this agent yet.
-                      </p>
+                      <div className="rounded-xl border border-dashed border-[#C8CED8] bg-[#FAFBFC] p-6 text-center">
+                        <p className="text-sm font-medium text-[#282C34]">No leads captured yet</p>
+                        <p className="mt-1 text-sm text-[#687080]">
+                          Captured customer requests and their follow-up lifecycle will appear here.
+                        </p>
+                      </div>
                     ) : (
                       <table className="w-full min-w-[86rem] text-left text-sm">
-                        <thead className="border-b border-zinc-200 text-xs uppercase text-zinc-500">
+                        <thead className="border-b border-[#DDE1E8] text-[11px] uppercase tracking-[0.08em] text-[#7A8290]">
                           <tr>
                             <th className="py-2 pr-4 font-semibold">Customer</th>
                             <th className="py-2 pr-4 font-semibold">Phone</th>
@@ -987,14 +1139,14 @@ export default function DashboardPage() {
                                   <span className="text-xs text-zinc-500">Follow-up off</span>
                                 ) : lead.confirmation_status === "pending" ? (
                                   <Link
-                                    className="inline-flex rounded-md border border-zinc-300 bg-white px-3 py-1.5 text-xs font-medium text-zinc-700 hover:bg-zinc-100"
+                                      className="inline-flex rounded-lg border border-[#C8CED8] bg-white px-3 py-1.5 text-xs font-semibold text-[#282C34] hover:bg-[#F0F5FF] hover:text-[#0B4ED0]"
                                     href={`/confirm/${lead.id}`}
                                   >
                                     Confirm
                                   </Link>
                                 ) : lead.confirmation_status === "confirmed" ? (
                                   <Link
-                                    className="inline-flex rounded-md border border-emerald-200 bg-emerald-50 px-3 py-1.5 text-xs font-medium text-emerald-700 hover:bg-emerald-100"
+                                    className="inline-flex rounded-lg border border-[#B7E2DA] bg-[#ECF9F6] px-3 py-1.5 text-xs font-semibold text-[#287C70] hover:bg-[#DFF4EF]"
                                     href={`/confirm/${lead.id}`}
                                   >
                                     View
