@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { FormEvent, KeyboardEvent, useRef, useState } from "react";
 import { AssemblerLogo } from "@/components/assembler/AssemblerLogo";
+import type { AgentBlueprint } from "@/lib/assembler/blueprint";
 import {
   DEFAULT_FOLLOW_UP_PREFERENCES,
   type FollowUpPreferences,
@@ -20,20 +21,8 @@ type CreatedAgent = {
   assemblyai_agent_id?: string | null;
 };
 
-type AgentConfig = {
-  follow_up_preferences: FollowUpPreferences;
-  business_name: string;
-  industry: string;
-  name: string;
-  agent_purpose: string;
-  business_knowledge: string;
-  business_hours_start: string;
-  business_hours_end: string;
-  timezone: string;
-};
-
 type AgentResponse = CreatedAgent & { error?: string };
-type AgentConfigResponse = AgentConfig & { error?: string };
+type BlueprintResponse = { blueprint?: AgentBlueprint; error?: string };
 
 const AGENT_PURPOSE_OPTIONS = [
   { value: "general_receptionist", label: "General receptionist" },
@@ -74,7 +63,7 @@ const BUILD_STEPS = [
   {
     number: "02",
     title: "Review",
-    detail: "Check the generated identity, knowledge, schedule, and follow-up rules.",
+    detail: "Check the blueprint's identity, data, tools, rules, and workflow.",
   },
   {
     number: "03",
@@ -124,6 +113,8 @@ export default function Home() {
   );
   const [timezone, setTimezone] = useState("Asia/Karachi");
   const [hasGeneratedConfig, setHasGeneratedConfig] = useState(false);
+  const [blueprint, setBlueprint] = useState<AgentBlueprint | null>(null);
+  const [blueprintIntent, setBlueprintIntent] = useState("");
   const [businessName, setBusinessName] = useState("");
   const [industry, setIndustry] = useState("");
   const [agentName, setAgentName] = useState("");
@@ -186,6 +177,8 @@ export default function Home() {
     setBusinessDays(DEFAULT_BUSINESS_DAYS);
     setTimezone("Asia/Karachi");
     setHasGeneratedConfig(false);
+    setBlueprint(null);
+    setBlueprintIntent("");
     setBusinessDescription("");
   }
 
@@ -298,44 +291,38 @@ export default function Home() {
     setCopyStatus(null);
 
     const trimmedDescription = businessDescription.trim();
-    if (!trimmedDescription) {
-      setConfigurationError("Tell us about your business first.");
+    if (trimmedDescription.length < 20 || trimmedDescription.length > 5000) {
+      setConfigurationError("Describe the agent in 20 to 5,000 characters.");
       return;
     }
 
     setIsConfiguring(true);
     try {
-      const response = await fetch("/api/agents/configure", {
+      const response = await fetch("/api/agents/compile", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          description: trimmedDescription,
-          follow_up_preferences: followUpPreferences,
-        }),
+        body: JSON.stringify({ intent: trimmedDescription }),
       });
-      const data = (await response.json()) as AgentConfigResponse;
+      const data = (await response.json()) as BlueprintResponse;
 
-      if (!response.ok) {
-        throw new Error(data.error ?? "Failed to configure agent.");
-      }
-
-      setBusinessName(data.business_name);
-      setIndustry(data.industry);
-      setAgentName(data.name);
-      setAgentPurpose(data.agent_purpose);
-      setBusinessKnowledge(data.business_knowledge);
-      setBusinessHoursStart(data.business_hours_start);
-      setBusinessHoursEnd(data.business_hours_end);
-      setTimezone(data.timezone);
-      setFollowUpPreferences(data.follow_up_preferences);
-      setHasGeneratedConfig(true);
+      if (!response.ok || !data.blueprint) throw new Error(data.error ?? "Could not design the blueprint. Please retry.");
+      setBlueprint(data.blueprint);
+      setBlueprintIntent(trimmedDescription);
+      setHasGeneratedConfig(false);
     } catch (err) {
       setConfigurationError(
-        err instanceof Error ? err.message : "Failed to configure agent.",
+        err instanceof Error ? err.message : "Could not design the blueprint. Please retry.",
       );
     } finally {
       setIsConfiguring(false);
     }
+  }
+
+  function openCompatibleCreation() {
+    if (!blueprint || blueprintIntent !== businessDescription.trim()) return;
+    setAgentName(blueprint.identity.name);
+    setHasGeneratedConfig(true);
+    setError(null);
   }
 
   async function handleSimpleSubmit(event: FormEvent<HTMLFormElement>) {
@@ -645,9 +632,12 @@ export default function Home() {
                   <textarea
                     id="business-description"
                     className="mt-5 min-h-56 w-full resize-y rounded-xl border border-[#C8CED8] bg-white px-4 py-4 text-base leading-7 text-[#17191D] outline-none transition placeholder:text-[#8B93A1] focus:border-[#1769FF] focus:ring-4 focus:ring-[#1769FF]/10 sm:min-h-64"
-                    placeholder="I run a dental clinic in Karachi. Build a receptionist that answers common questions, captures patient details, checks availability, and books appointments during our weekday hours. Escalate complaints or questions it cannot answer."
+                    placeholder="Describe the work this agent should handle, what information it needs, the actions it should take, and when a person should step in."
                     value={businessDescription}
-                    onChange={(event) => setBusinessDescription(event.target.value)}
+                    onChange={(event) => {
+                      setBusinessDescription(event.target.value);
+                      setHasGeneratedConfig(false);
+                    }}
                   />
 
                   <div className="mt-4 rounded-xl bg-[#F5F7FA] p-4">
@@ -740,15 +730,14 @@ export default function Home() {
 
                   <div className="mt-6 flex flex-col gap-4 border-t border-[#E1E4E9] pt-5 sm:flex-row sm:items-center sm:justify-between">
                     <p className="max-w-lg text-sm leading-6 text-[#687080]">
-                      You will review the generated configuration before the live
-                      voice agent is created.
+                      First review a blueprint. Generated tools and connections are plans, not active capabilities.
                     </p>
                     <button
                       className="assembler-primary-button"
                       disabled={isConfiguring}
                       type="submit"
                     >
-                      {isConfiguring ? "Assembling..." : "Generate configuration"}
+                      {isConfiguring ? "Designing blueprint..." : blueprint ? "Regenerate blueprint" : "Design blueprint"}
                     </button>
                   </div>
                   {configurationError ? (
@@ -758,14 +747,76 @@ export default function Home() {
                   ) : null}
                 </form>
 
+                {isConfiguring ? (
+                  <div aria-live="polite" className="assembler-panel border-l-4 border-[#1769FF] p-5 sm:p-7">
+                    <p className="font-semibold">Designing your blueprint</p>
+                    <p className="mt-2 text-sm leading-6 text-[#687080]">Understanding the workflow, identifying data and capabilities, and structuring rules in one request.</p>
+                  </div>
+                ) : null}
+
+                {blueprint ? (
+                  <section aria-label="Blueprint review" className="assembler-panel space-y-6 p-5 sm:p-7">
+                    <div className="flex flex-wrap items-start justify-between gap-3 border-b border-[#E1E4E9] pb-5">
+                      <div>
+                        <p className="text-xs font-semibold uppercase tracking-[0.14em] text-[#1769FF]">Blueprint designed · Review only</p>
+                        <h3 className="mt-2 text-2xl font-semibold">{blueprint.identity.name}</h3>
+                        <p className="mt-1 text-sm text-[#687080]">{blueprint.identity.role}</p>
+                      </div>
+                      <a className="assembler-secondary-button" href="#business-description">Edit description</a>
+                    </div>
+                    {blueprintIntent !== businessDescription.trim() ? (
+                      <p className="rounded-lg border border-[#F2D6A7] bg-[#FFF8E8] p-3 text-sm text-[#805A17]">Description changed. Regenerate the blueprint before continuing.</p>
+                    ) : null}
+                    <div>
+                      <h4 className="font-semibold">Agent</h4>
+                      <p className="mt-2 text-sm leading-6 text-[#414957]">{blueprint.objective}</p>
+                      <p className="mt-2 rounded-lg bg-[#F5F7FA] p-3 text-sm italic leading-6 text-[#414957]">“{blueprint.greeting}”</p>
+                      {blueprint.behavior.instructions.length ? <ul className="mt-3 list-disc space-y-1 pl-5 text-sm text-[#414957]">{blueprint.behavior.instructions.map((instruction, i) => <li key={i}>{instruction}</li>)}</ul> : null}
+                    </div>
+                    <div>
+                      <h4 className="font-semibold">Knowledge needed</h4>
+                      {blueprint.knowledge.requirements.length ? <ul className="mt-2 list-disc space-y-1 pl-5 text-sm text-[#414957]">{blueprint.knowledge.requirements.map((item, i) => <li key={i}>{item}</li>)}</ul> : <p className="mt-2 text-sm text-[#687080]">No additional knowledge specified.</p>}
+                    </div>
+                    <div>
+                      <h4 className="font-semibold">What it collects</h4>
+                      {blueprint.dataFields.length ? <div className="mt-3 grid gap-2 sm:grid-cols-2">{blueprint.dataFields.map((field) => <div className="rounded-lg border border-[#E1E4E9] p-3" key={field.key}><p className="text-sm font-medium">{field.label}</p><p className="mt-1 text-xs text-[#687080]">{field.type} · {field.required ? "Required" : "Optional"}</p><p className="mt-2 text-sm text-[#414957]">{field.description}</p></div>)}</div> : <p className="mt-2 text-sm text-[#687080]">No structured fields needed.</p>}
+                    </div>
+                    <div>
+                      <h4 className="font-semibold">What it can do</h4>
+                      {blueprint.tools.length ? <div className="mt-3 space-y-2">{blueprint.tools.map((tool) => <div className="rounded-lg border border-[#E1E4E9] p-3" key={tool.id}><div className="flex flex-wrap items-center gap-2"><p className="text-sm font-medium">{tool.name}</p><span className="rounded bg-[#F0F5FF] px-2 py-0.5 text-xs text-[#0B4ED0]">{tool.kind.replaceAll("_", " ")}</span><span className="text-xs text-[#687080]">{tool.connectionId ? "Connection required" : "Planned capability"}</span></div><p className="mt-2 text-sm text-[#414957]">{tool.description}</p></div>)}</div> : <p className="mt-2 text-sm text-[#687080]">No actions planned.</p>}
+                    </div>
+                    <div>
+                      <h4 className="font-semibold">Connections needed</h4>
+                      {blueprint.connections.length ? <div className="mt-3 space-y-2">{blueprint.connections.map((connection) => <div className="rounded-lg border border-[#E1E4E9] p-3" key={connection.id}><p className="text-sm font-medium">{connection.name} <span className="font-normal text-[#687080]">· {connection.kind} · {connection.required ? "Required" : "Optional"}</span></p><p className="mt-1 text-sm text-[#414957]">{connection.reason}</p></div>)}</div> : <p className="mt-2 text-sm text-[#687080]">No external connection identified.</p>}
+                    </div>
+                    <div>
+                      <h4 className="font-semibold">Business rules</h4>
+                      {blueprint.rules.length ? <ul className="mt-2 space-y-2">{blueprint.rules.map((rule) => <li className="rounded-lg bg-[#F5F7FA] p-3 text-sm text-[#414957]" key={rule.id}>{rule.description}<span className="mt-1 block text-xs text-[#687080]">If {rule.source} {rule.operator.replaceAll("_", " ")}{rule.value === null ? "" : ` ${String(rule.value)}`}, {rule.action.replaceAll("_", " ")}{rule.target ? ` ${rule.target.replaceAll("_", " ")}` : ""}.</span></li>)}</ul> : <p className="mt-2 text-sm text-[#687080]">No explicit rules identified.</p>}
+                    </div>
+                    <div>
+                      <h4 className="font-semibold">Outcomes</h4>
+                      {blueprint.outcomes.length ? <ul className="mt-2 space-y-2">{blueprint.outcomes.map((outcome) => <li className="text-sm text-[#414957]" key={outcome.id}><strong>{outcome.label}</strong> — {outcome.description}</li>)}</ul> : <p className="mt-2 text-sm text-[#687080]">No outcomes specified.</p>}
+                    </div>
+                    <div>
+                      <h4 className="font-semibold">Workflow preview</h4>
+                      {blueprint.workflow.length ? <ol className="mt-3 space-y-2 border-l-2 border-[#DDE7FF] pl-4">{blueprint.workflow.map((step, i) => <li className="relative rounded-lg bg-[#F5F7FA] p-3" key={step.id}><span className="text-xs font-semibold text-[#1769FF]">{String(i + 1).padStart(2, "0")} · {step.type}</span><p className="mt-1 text-sm font-medium">{step.label}</p><p className="mt-1 text-sm text-[#687080]">{step.description}</p></li>)}</ol> : <p className="mt-2 text-sm text-[#687080]">No workflow steps specified.</p>}
+                    </div>
+                    <details className="border-t border-[#E1E4E9] pt-4"><summary className="cursor-pointer text-sm font-medium text-[#1769FF]">View blueprint JSON</summary><pre className="mt-3 max-h-96 overflow-auto rounded-lg bg-[#101724] p-4 text-xs text-white">{JSON.stringify(blueprint, null, 2)}</pre></details>
+                    <div className="border-t border-[#E1E4E9] pt-5">
+                      <p className="text-sm leading-6 text-[#687080]">This blueprint is a design. Its generated tools, rules, and connections are not deployed. You can create a voice agent with the currently supported setup below; review and complete its business details first.</p>
+                      <button className="assembler-primary-button mt-4" disabled={blueprintIntent !== businessDescription.trim()} onClick={openCompatibleCreation} type="button">Continue with compatible voice agent</button>
+                    </div>
+                  </section>
+                ) : null}
+
                 {hasGeneratedConfig ? (
                   <form className="assembler-panel p-5 sm:p-7" onSubmit={handleSimpleSubmit}>
                     <div className="flex items-center gap-3">
                       <span className="assembler-step-number">02</span>
                       <div>
-                        <h3 className="font-semibold">Review configuration</h3>
+                        <h3 className="font-semibold">Review compatible voice agent</h3>
                         <p className="text-sm text-[#687080]">
-                          Adjust any detail before creating the voice agent.
+                          Complete the supported business setup. Blueprint tools and rules are not included in this agent.
                         </p>
                       </div>
                     </div>
@@ -863,7 +914,7 @@ export default function Home() {
               </ol>
               <div className="mt-6 border-t border-[#E1E4E9] pt-5">
                 <p className="text-xs font-semibold uppercase tracking-[0.14em] text-[#687080]">
-                  Connected actions
+                  Current voice agent actions
                 </p>
                 <div className="mt-3 flex flex-wrap gap-2">
                   {["Lead capture", "Availability", "Booking", "Escalation"].map(
