@@ -43,6 +43,15 @@ test('successful tool records only its blueprint-approved outcome', async () => 
   const result = await registry.dispatchBlueprintTool({ blueprint, toolId: 'save_order', arguments: { order_id: 'A-123' }, executors, setOutcome: async id => saved.push(id) });
   assert.equal(result.outcome, 'request_saved'); assert.deepEqual(saved, ['request_saved']);
 });
+test('rule-triggered escalation persists the escalation tool outcome', async () => {
+  const blueprint = basic();
+  blueprint.outcomes = [{ id: 'human_follow_up' }];
+  blueprint.tools[1].outcomeId = 'human_follow_up';
+  blueprint.rules = [{ source: 'order_id', operator: 'equals', value: 'COMPLAINT', action: 'require_escalation', target: 'save_order', description: 'A team member should follow up.' }];
+  const saved = [];
+  const result = await registry.dispatchBlueprintTool({ blueprint, toolId: 'save_order', arguments: { order_id: 'COMPLAINT' }, executors, setOutcome: async id => saved.push(id) });
+  assert.equal(result.outcome, 'human_follow_up'); assert.deepEqual(saved, ['human_follow_up']);
+});
 test('registry rejects unknown tools and invalid arguments', async () => {
   const blueprint = basic();
   assert.equal((await registry.dispatchBlueprintTool({ blueprint, toolId: 'unknown', arguments: {}, executors })).code, 'unknown_tool');

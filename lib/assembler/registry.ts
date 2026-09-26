@@ -43,7 +43,11 @@ export async function dispatchBlueprintTool(input: {
       const escalation = input.blueprint.tools.find((item) => item.kind === "escalation");
       if (!escalation) return { success: false, code: "escalation_unavailable", error: "This issue needs human review." };
       const result = await input.executors.escalation(escalation, { ...args, reason: rules.escalation.description });
-      return { ...result, outcome: result.success ? input.blueprint.outcomes.find((item) => item.id === "issue_escalated")?.id : undefined };
+      if (result.success && escalation.outcomeId && input.setOutcome) {
+        await input.setOutcome(escalation.outcomeId);
+        return { ...result, outcome: escalation.outcomeId };
+      }
+      return result;
     }
     const executor = input.executors[tool.kind];
     if (!executor) return { success: false, code: "unsupported_tool", error: "No executor is available for this tool." };
