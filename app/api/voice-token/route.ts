@@ -1,8 +1,19 @@
 const ASSEMBLYAI_TOKEN_URL = "https://agents.assemblyai.com/v1/token";
+const ASSEMBLYAI_WS_URL = "wss://agents.assemblyai.com/v1/ws";
+const ASSEMBLYAI_RELAY_URL = process.env.ASSEMBLYAI_RELAY_URL?.replace(/\/$/, "") || null;
 
 type AssemblyAITokenResponse = {
   token?: string;
 };
+
+function getTokenUrl(): URL {
+  return new URL(ASSEMBLYAI_RELAY_URL ? `${ASSEMBLYAI_RELAY_URL}/token` : ASSEMBLYAI_TOKEN_URL);
+}
+
+function getVoiceWebSocketUrl(): string {
+  if (!ASSEMBLYAI_RELAY_URL) return ASSEMBLYAI_WS_URL;
+  return `${ASSEMBLYAI_RELAY_URL.replace(/^http/, "ws")}/ws`;
+}
 
 function requireAssemblyAIApiKey(): string {
   const apiKey = process.env.ASSEMBLYAI_API_KEY;
@@ -37,14 +48,15 @@ export async function GET(request: Request) {
   const agentId = getAgentIdFromRequest(request);
 
   try {
-    const url = new URL(ASSEMBLYAI_TOKEN_URL);
+    const url = getTokenUrl();
     url.searchParams.set("expires_in_seconds", "300");
     url.searchParams.set("max_session_duration_seconds", "1800");
 
+    const apiKey = requireAssemblyAIApiKey();
     const response = await fetch(url, {
-      headers: {
-        Authorization: `Bearer ${requireAssemblyAIApiKey()}`,
-      },
+      headers: ASSEMBLYAI_RELAY_URL
+        ? { "x-assemblyai-key": apiKey }
+        : { Authorization: `Bearer ${apiKey}` },
     });
 
     if (!response.ok) {
@@ -64,10 +76,10 @@ export async function GET(request: Request) {
     }
 
     if (agentId) {
-      return Response.json({ token: data.token, agent_id: agentId });
+      return Response.json({ token: data.token, agent_id: agentId, ws_url: getVoiceWebSocketUrl() });
     }
 
-    return Response.json({ token: data.token });
+    return Response.json({ token: data.token, ws_url: getVoiceWebSocketUrl() });
   } catch (error) {
     return Response.json(
       {

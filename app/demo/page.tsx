@@ -14,6 +14,7 @@ type TranscriptEntry = {
 type VoiceTokenResponse = {
   token?: string;
   agent_id?: string;
+  ws_url?: string;
   error?: string;
 };
 
@@ -512,7 +513,7 @@ function DemoPageContent() {
       const silence = audioContext.createGain();
       silence.gain.value = 0;
 
-      const wsUrl = new URL("wss://agents.assemblyai.com/v1/ws");
+      const wsUrl = new URL(tokenData.ws_url ?? "wss://agents.assemblyai.com/v1/ws");
       wsUrl.searchParams.set("token", tokenData.token);
       const ws = new WebSocket(wsUrl);
 

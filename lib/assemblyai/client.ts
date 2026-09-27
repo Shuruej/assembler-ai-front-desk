@@ -1,4 +1,8 @@
 const ASSEMBLYAI_AGENTS_BASE_URL = "https://agents.assemblyai.com";
+const ASSEMBLYAI_RELAY_URL =
+  typeof process !== "undefined"
+    ? process.env.ASSEMBLYAI_RELAY_URL?.replace(/\/$/, "") || null
+    : null;
 import type { AgentBlueprint } from "@/lib/assembler/blueprint";
 
 export type CreateAssemblyAIAgentInput = {
@@ -122,6 +126,30 @@ function requireAssemblyAIApiKey(): string {
   }
 
   return apiKey;
+}
+
+function getAssemblyAIUrl(path: string): string {
+  if (ASSEMBLYAI_RELAY_URL) {
+    return `${ASSEMBLYAI_RELAY_URL}${path}`;
+  }
+
+  return `${ASSEMBLYAI_AGENTS_BASE_URL}${path}`;
+}
+
+function getAssemblyAIHeaders(includeJson = false): Record<string, string> {
+  const headers: Record<string, string> = {};
+
+  if (ASSEMBLYAI_RELAY_URL) {
+    headers["x-assemblyai-key"] = requireAssemblyAIApiKey();
+  } else {
+    headers.Authorization = requireAssemblyAIApiKey();
+  }
+
+  if (includeJson) {
+    headers["Content-Type"] = "application/json";
+  }
+
+  return headers;
 }
 
 async function parseAssemblyAIResponse(response: Response) {
@@ -485,12 +513,9 @@ export async function createAssemblyAIAgent({
   feedbackEnabled,
   blueprint,
 }: CreateAssemblyAIAgentInput): Promise<AssemblyAIAgent> {
-  const response = await fetch(`${ASSEMBLYAI_AGENTS_BASE_URL}/v1/agents`, {
+  const response = await fetch(getAssemblyAIUrl("/agents"), {
     method: "POST",
-    headers: {
-      Authorization: requireAssemblyAIApiKey(),
-      "Content-Type": "application/json",
-    },
+    headers: getAssemblyAIHeaders(true),
     body: JSON.stringify(buildFrontDeskAgentConfig({
       name,
       businessName,
@@ -526,13 +551,10 @@ export async function updateAssemblyAIAgent(
   input: CreateAssemblyAIAgentInput,
 ): Promise<AssemblyAIAgent> {
   const response = await fetch(
-    `${ASSEMBLYAI_AGENTS_BASE_URL}/v1/agents/${assemblyaiAgentId}`,
+    getAssemblyAIUrl(`/agents/${assemblyaiAgentId}`),
     {
       method: "PUT",
-      headers: {
-        Authorization: requireAssemblyAIApiKey(),
-        "Content-Type": "application/json",
-      },
+      headers: getAssemblyAIHeaders(true),
       body: JSON.stringify(buildFrontDeskAgentConfig(input)),
     },
   );
