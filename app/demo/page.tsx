@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { Suspense, useEffect, useRef, useState } from "react";
+import { AssemblerLogo } from "@/components/assembler/AssemblerLogo";
 
 type TranscriptEntry = {
   id: string;
@@ -16,6 +17,12 @@ type VoiceTokenResponse = {
   agent_id?: string;
   ws_url?: string;
   error?: string;
+};
+
+type AgentSummary = {
+  name?: string | null;
+  business_name?: string | null;
+  assemblyai_agent_id?: string | null;
 };
 
 type CallStartResponse = {
@@ -118,6 +125,8 @@ function DemoPageContent() {
   const [status, setStatus] = useState("Not tested");
   const [isCalling, setIsCalling] = useState(false);
   const [transcript, setTranscript] = useState<TranscriptEntry[]>([]);
+  const [selectedAgent, setSelectedAgent] = useState<AgentSummary | null>(null);
+  const [elapsedSeconds, setElapsedSeconds] = useState(0);
 
   const wsRef = useRef<WebSocket | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
@@ -141,6 +150,36 @@ function DemoPageContent() {
   const shouldAutoEndAfterReplyRef = useRef(false);
   const sessionPromptRef = useRef<string | null>(null);
   const blueprintModeRef = useRef(false);
+
+  useEffect(() => {
+    if (!queryAgentId) return;
+
+    let cancelled = false;
+    void fetch("/api/agents")
+      .then(async (response) => (response.ok ? ((await response.json()) as AgentSummary[]) : []))
+      .then((agents) => {
+        if (cancelled) return;
+        setSelectedAgent(
+          agents.find((agent) => agent.assemblyai_agent_id === queryAgentId) ?? null,
+        );
+      })
+      .catch(() => {
+        if (!cancelled) setSelectedAgent(null);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [queryAgentId]);
+
+  useEffect(() => {
+    if (!isCalling) return;
+    setElapsedSeconds(0);
+    const timer = window.setInterval(() => {
+      setElapsedSeconds((current) => current + 1);
+    }, 1000);
+    return () => window.clearInterval(timer);
+  }, [isCalling]);
 
   function addTranscript(entry: TranscriptEntry) {
     setTranscript((current) => [...current, entry]);
@@ -710,76 +749,223 @@ function DemoPageContent() {
     };
   }, []);
 
+  const sessionReady = transcript.some(
+    (entry) => entry.role === "system" && entry.text.includes("Session ready"),
+  );
+  const hasUserSpeech = transcript.some((entry) => entry.role === "user" && !entry.partial);
+  const hasAgentReply = transcript.some((entry) => entry.role === "agent" && !entry.partial);
+  const toolEvents = transcript.filter(
+    (entry) =>
+      entry.role === "system" &&
+      (entry.text.includes(" completed.") ||
+        entry.text === "Escalated to human team." ||
+        entry.text === "Slot booked." ||
+        entry.text === "Lead captured and saved."),
+  );
+  const durationLabel = `${String(Math.floor(elapsedSeconds / 60)).padStart(2, "0")}:${String(elapsedSeconds % 60).padStart(2, "0")}`;
+  const displayAgentName = selectedAgent?.name?.trim() || "Voice Agent";
+  const displayBusinessName = selectedAgent?.business_name?.trim() || "Assembler workspace";
+  const isConnected = isCalling && status === "Connected";
+
   return (
-    <main className="min-h-screen bg-[#F7F8FA] px-4 py-8 text-[#17191D]">
-      <div className="mx-auto flex max-w-3xl flex-col gap-6">
-        <div>
-          <Link className="assembler-secondary-button mb-5" href="/dashboard">Back to Agent Studio</Link><p className="mb-2 text-xs font-semibold uppercase tracking-widest text-[#1769FF]">Assembler · Built on AssemblyAI</p><h1 className="text-3xl font-semibold">Test your voice agent</h1>
-          <p className="mt-2 text-sm text-zinc-600">
-            Paste an AssemblyAI agent ID, start a browser call, and speak through your
-            microphone. Review captured records and tool activity in Agent Studio after the call.
-          </p>
+    <main className="min-h-screen bg-[#F5F7FB] text-[#17191D]">
+      <div className="border-b border-[#E1E4E9] bg-white">
+        <div className="mx-auto flex max-w-6xl items-center justify-between gap-4 px-4 py-4 sm:px-6">
+          <Link className="rounded-lg focus:outline-none focus-visible:ring-2 focus-visible:ring-[#1769FF]" href="/">
+            <AssemblerLogo subtitle="Voice Lab" />
+          </Link>
+          <div className="flex items-center gap-3">
+            <span className="hidden items-center gap-2 rounded-full border border-[#D8E5FF] bg-[#F3F7FF] px-3 py-1.5 text-xs font-semibold text-[#1769FF] sm:flex">
+              <span className={`h-2 w-2 rounded-full ${isConnected ? "bg-emerald-500 animate-pulse" : "bg-[#9BA3B0]"}`} />
+              LIVE VOICE
+            </span>
+            <Link className="assembler-secondary-button" href="/dashboard">Back to Studio</Link>
+          </div>
+        </div>
+      </div>
+
+      <div className="mx-auto max-w-6xl px-4 py-8 sm:px-6">
+        <div className="mb-7">
+          <p className="text-xs font-semibold uppercase tracking-[0.18em] text-[#1769FF]">Voice agent test</p>
+          <div className="mt-2 flex flex-wrap items-end justify-between gap-4">
+            <div>
+              <h1 className="text-3xl font-semibold tracking-[-0.03em] sm:text-4xl">{displayAgentName}</h1>
+              <p className="mt-2 text-sm text-[#687080]">{displayBusinessName} · Real browser voice session powered by AssemblyAI</p>
+            </div>
+            <div className="rounded-full border border-[#DCE1E8] bg-white px-3 py-1.5 text-xs font-medium text-[#596273]">
+              Session {durationLabel}
+            </div>
+          </div>
         </div>
 
-        <section className="flex flex-col gap-3 rounded-lg border border-zinc-200 bg-white p-4">
-          <label className="text-sm font-medium" htmlFor="agent-id">
-            AssemblyAI agent ID
-          </label>
-          <input
-            id="agent-id"
-            className="rounded-md border border-zinc-300 px-3 py-2 font-mono text-sm outline-none focus:border-zinc-900"
-            placeholder="5c7cf111-fef8-46f9-bef8-541b13aadd2c"
-            value={agentId}
-            onChange={(event) => setAgentId(event.target.value)}
-            disabled={isCalling}
-            readOnly={hasQueryAgentId}
-          />
-          {hasQueryAgentId ? (
-            <p className="text-sm text-zinc-600">
-              Not this agent?{" "}
-              <Link className="font-medium text-[#1769FF] underline" href="/dashboard">
-                Select another agent in Agent Studio.
-              </Link>
-            </p>
-          ) : null}
-          <div className="flex gap-3">
-            <button
-              className="assembler-primary-button"
-              type="button"
-              onClick={startCall}
-              disabled={isCalling}
-            >
-              Start Call
-            </button>
-            <button
-              className="assembler-secondary-button"
-              type="button"
-              onClick={stopCall}
-              disabled={!isCalling}
-            >
-              Stop Call
-            </button>
-          </div>
-          <p role="status" className="rounded-lg bg-[#F0F5FF] p-3 text-sm text-[#414957]">Status: {status}</p>
-        </section>
+        <div className="grid gap-5 lg:grid-cols-[1.55fr_0.85fr]">
+          <section className="overflow-hidden rounded-2xl border border-[#DCE1E8] bg-white shadow-[0_18px_50px_rgba(35,48,73,0.08)]">
+            <div className="flex items-center justify-between gap-4 border-b border-[#E8EBEF] px-5 py-4 sm:px-6">
+              <div>
+                <p className="text-sm font-semibold">Voice session</p>
+                <p className="mt-0.5 text-xs text-[#77808F]">Speak naturally. Actions and outcomes appear below.</p>
+              </div>
+              <div className={`flex items-center gap-2 rounded-full px-3 py-1.5 text-xs font-semibold ${
+                isConnected ? "bg-emerald-50 text-emerald-700" : isCalling ? "bg-blue-50 text-[#1769FF]" : "bg-[#F1F3F6] text-[#687080]"
+              }`}>
+                <span className={`h-2 w-2 rounded-full ${isConnected ? "bg-emerald-500 animate-pulse" : isCalling ? "bg-[#1769FF] animate-pulse" : "bg-[#AAB1BC]"}`} />
+                {isConnected ? "Connected" : isCalling ? "Connecting" : "Ready"}
+              </div>
+            </div>
 
-        <section className="min-h-72 rounded-lg border border-zinc-200 bg-white p-4">
-          <h2 className="text-sm font-semibold uppercase tracking-wide text-zinc-500">
-            Live transcript
-          </h2>
-          <div className="mt-4 flex flex-col gap-3">
-            {transcript.length === 0 ? (
-              <p className="text-sm text-zinc-500">Not tested. Start a call to see the conversation here. A working AssemblyAI connection and microphone permission are required.</p>
-            ) : (
-              transcript.map((entry) => (
-                <div key={entry.id} className="rounded-md bg-zinc-50 p-3">
-                  <div className="text-xs font-semibold uppercase text-zinc-500">
-                    {entry.role}
-                    {entry.partial ? " partial" : ""}
-                  </div>
-                  <p className="mt-1 text-sm">{entry.text}</p>
+            <div className="flex min-h-[390px] flex-col items-center justify-center px-5 py-9 text-center sm:px-8">
+              <div className="relative flex h-40 w-40 items-center justify-center">
+                <div className={`absolute inset-0 rounded-full bg-[#1769FF]/10 ${isCalling ? "animate-ping" : ""}`} style={{ animationDuration: "2.4s" }} />
+                <div className={`absolute inset-4 rounded-full border ${isConnected ? "border-[#42C7D5]/50 bg-[#EAFBFD]" : "border-[#D9E5FF] bg-[#F2F6FF]"}`} />
+                <div className="relative flex h-24 w-24 items-center justify-center rounded-full bg-gradient-to-br from-[#1769FF] to-[#42C7D5] shadow-[0_12px_35px_rgba(23,105,255,0.28)]">
+                  <svg aria-hidden="true" className="h-10 w-10 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="1.8">
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M12 3a3.5 3.5 0 0 0-3.5 3.5v5a3.5 3.5 0 0 0 7 0v-5A3.5 3.5 0 0 0 12 3Z" />
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M5.5 10.5a6.5 6.5 0 0 0 13 0M12 17v4M8.5 21h7" />
+                  </svg>
                 </div>
-              ))
+              </div>
+
+              <h2 className="mt-5 text-xl font-semibold">{isConnected ? "Listening" : isCalling ? "Connecting to agent" : "Ready for a live test"}</h2>
+              <p role="status" className="mt-2 max-w-md text-sm leading-6 text-[#687080]">{status}</p>
+
+              <button
+                className={`mt-7 min-w-48 rounded-xl px-6 py-3 text-sm font-semibold shadow-sm transition focus:outline-none focus-visible:ring-4 ${
+                  isCalling
+                    ? "border border-[#E1E4E9] bg-white text-[#2B313B] hover:bg-[#F7F8FA] focus-visible:ring-zinc-200"
+                    : "bg-[#1769FF] text-white hover:bg-[#0B5CE5] focus-visible:ring-[#1769FF]/20"
+                }`}
+                type="button"
+                onClick={isCalling ? stopCall : startCall}
+              >
+                {isCalling ? "End voice call" : "Start voice call"}
+              </button>
+
+              {!hasQueryAgentId ? (
+                <div className="mt-7 w-full max-w-xl text-left">
+                  <label className="text-xs font-semibold uppercase tracking-wide text-[#77808F]" htmlFor="agent-id">AssemblyAI agent ID</label>
+                  <input
+                    id="agent-id"
+                    className="mt-2 w-full rounded-xl border border-[#D8DDE5] px-3 py-2.5 font-mono text-xs outline-none focus:border-[#1769FF] focus:ring-4 focus:ring-[#1769FF]/10"
+                    placeholder="agent_..."
+                    value={agentId}
+                    onChange={(event) => setAgentId(event.target.value)}
+                    disabled={isCalling}
+                  />
+                </div>
+              ) : (
+                <details className="mt-6 w-full max-w-xl rounded-xl border border-[#E5E8ED] bg-[#FAFBFC] px-4 py-3 text-left">
+                  <summary className="cursor-pointer text-xs font-semibold text-[#687080]">Technical details</summary>
+                  <div className="mt-3 flex flex-wrap items-center justify-between gap-3">
+                    <code className="break-all text-[11px] text-[#596273]">{agentId}</code>
+                    <Link className="text-xs font-semibold text-[#1769FF]" href="/dashboard">Change agent</Link>
+                  </div>
+                </details>
+              )}
+            </div>
+          </section>
+
+          <aside className="rounded-2xl border border-[#DCE1E8] bg-white p-5 shadow-[0_18px_50px_rgba(35,48,73,0.06)] sm:p-6">
+            <p className="text-xs font-semibold uppercase tracking-[0.14em] text-[#77808F]">Session activity</p>
+            <h2 className="mt-2 text-lg font-semibold">Live verification</h2>
+            <div className="mt-5 space-y-4">
+              {[
+                ["Voice connection", sessionReady],
+                ["Caller speech captured", hasUserSpeech],
+                ["Agent response received", hasAgentReply],
+                ["Business action executed", toolEvents.length > 0],
+              ].map(([label, complete]) => (
+                <div className="flex items-center gap-3" key={String(label)}>
+                  <span className={`flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-xs font-bold ${
+                    complete ? "bg-emerald-50 text-emerald-700" : "bg-[#F1F3F6] text-[#9AA2AE]"
+                  }`}>
+                    {complete ? "✓" : "·"}
+                  </span>
+                  <span className={`text-sm ${complete ? "font-medium text-[#2B313B]" : "text-[#7B8492]"}`}>{String(label)}</span>
+                </div>
+              ))}
+            </div>
+
+            <div className="my-6 h-px bg-[#E8EBEF]" />
+            <p className="text-xs font-semibold uppercase tracking-[0.14em] text-[#77808F]">Latest action</p>
+            {toolEvents.length > 0 ? (
+              <div className="mt-3 rounded-xl border border-[#CFE0FF] bg-[#F3F7FF] p-4">
+                <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-[#1769FF]">
+                  <span>⚡</span>
+                  Action executed
+                </div>
+                <p className="mt-2 text-sm font-medium leading-6 text-[#2B313B]">{toolEvents[toolEvents.length - 1].text}</p>
+              </div>
+            ) : (
+              <p className="mt-3 text-sm leading-6 text-[#7B8492]">Tool calls and workflow outcomes will appear here when the agent takes an action.</p>
+            )}
+            <p className="mt-6 rounded-xl bg-[#F7F8FA] p-3 text-xs leading-5 text-[#687080]">Only activity observed in this live session is marked complete.</p>
+          </aside>
+        </div>
+
+        <section className="mt-5 overflow-hidden rounded-2xl border border-[#DCE1E8] bg-white shadow-[0_18px_50px_rgba(35,48,73,0.06)]">
+          <div className="flex items-center justify-between border-b border-[#E8EBEF] px-5 py-4 sm:px-6">
+            <div>
+              <p className="text-xs font-semibold uppercase tracking-[0.14em] text-[#1769FF]">Live conversation</p>
+              <h2 className="mt-1 text-lg font-semibold">Transcript & actions</h2>
+            </div>
+            <span className="text-xs text-[#7B8492]">{transcript.filter((entry) => entry.role !== "system").length} messages</span>
+          </div>
+
+          <div className="min-h-72 space-y-4 p-5 sm:p-6">
+            {transcript.length === 0 ? (
+              <div className="flex min-h-56 flex-col items-center justify-center text-center">
+                <div className="flex h-12 w-12 items-center justify-center rounded-full bg-[#F0F5FF] text-[#1769FF]">•••</div>
+                <p className="mt-4 text-sm font-medium">Conversation will appear here</p>
+                <p className="mt-1 max-w-sm text-xs leading-5 text-[#7B8492]">Start a call and speak through your microphone. Voice replies, tool actions, and outcomes will be captured live.</p>
+              </div>
+            ) : (
+              transcript.map((entry) => {
+                const isToolEvent =
+                  entry.role === "system" &&
+                  (entry.text.includes(" completed.") ||
+                    entry.text === "Escalated to human team." ||
+                    entry.text === "Slot booked." ||
+                    entry.text === "Lead captured and saved.");
+
+                if (isToolEvent) {
+                  return (
+                    <div key={entry.id} className="mx-auto max-w-2xl rounded-xl border border-[#CFE0FF] bg-[#F3F7FF] px-4 py-3">
+                      <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-[#1769FF]">
+                        <span>⚡</span>
+                        Workflow action
+                      </div>
+                      <p className="mt-1.5 text-sm font-medium text-[#2B313B]">{entry.text}</p>
+                    </div>
+                  );
+                }
+
+                if (entry.role === "system") {
+                  return (
+                    <div className="flex justify-center" key={entry.id}>
+                      <span className="rounded-full bg-[#F1F3F6] px-3 py-1.5 text-xs text-[#687080]">{entry.text}</span>
+                    </div>
+                  );
+                }
+
+                const isUser = entry.role === "user";
+                return (
+                  <div className={`flex gap-3 ${isUser ? "justify-end" : "justify-start"}`} key={entry.id}>
+                    {!isUser ? (
+                      <img alt="" aria-hidden="true" className="mt-1 h-8 w-8 shrink-0 object-contain" src="/assembler/brand/assembler-mark.png" />
+                    ) : null}
+                    <div className={`max-w-[78%] rounded-2xl px-4 py-3 ${
+                      isUser
+                        ? "rounded-br-md bg-[#1769FF] text-white"
+                        : "rounded-bl-md border border-[#E5E8ED] bg-[#FAFBFC] text-[#2B313B]"
+                    }`}>
+                      <div className={`text-[10px] font-semibold uppercase tracking-wide ${isUser ? "text-white/70" : "text-[#7B8492]"}`}>
+                        {isUser ? "You" : displayAgentName}{entry.partial ? " · live" : ""}
+                      </div>
+                      <p className="mt-1 text-sm leading-6">{entry.text}</p>
+                    </div>
+                  </div>
+                );
+              })
             )}
           </div>
         </section>
