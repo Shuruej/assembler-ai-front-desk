@@ -6,6 +6,8 @@ import {
   normalizeFollowUpPreferences,
 } from "@/lib/follow-up-preferences";
 
+export const runtime = "nodejs";
+
 type CreateAgentRequestBody = {
   blueprint?: unknown;
   business_name?: unknown;

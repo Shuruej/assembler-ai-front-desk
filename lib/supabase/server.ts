@@ -1,4 +1,5 @@
 import { createClient } from "@supabase/supabase-js";
+import { fetch as undiciFetch } from "undici";
 
 function requireEnv(name: string): string {
   const value = process.env[name];
@@ -15,6 +16,9 @@ export function createSupabaseServiceRoleClient() {
     requireEnv("NEXT_PUBLIC_SUPABASE_URL"),
     requireEnv("SUPABASE_SERVICE_ROLE_KEY"),
     {
+      global: {
+        fetch: undiciFetch as unknown as typeof fetch,
+      },
       auth: {
         persistSession: false,
         autoRefreshToken: false,
