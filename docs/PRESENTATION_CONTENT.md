@@ -20,7 +20,7 @@ Businesses must connect all seven before a conversation can produce useful work.
 
 Describe the workflow. Assemble the agent.
 
-Write in normal language. Assembler builds a Blueprint for review.
+Write in normal language. Assembler assembles a Blueprint locally from curated configuration for review.
 
 ## Slide 4 — How It Works
 
@@ -45,15 +45,15 @@ Six starting points. One architecture.
 Auto Repair · Ecommerce · Real Estate
 Restaurant · IT Helpdesk · Property Management
 
-Starters fill an editable description. The same compiler and runtime handle each workflow.
+Starters fill an editable description and select curated fields and actions. The same Voice Agent creation path and generic runtime handle each workflow.
 
 ## Slide 7 — AssemblyAI
 
 AssemblyAI handles voice infrastructure.
 Assembler handles the business workflow layer.
 
-LLM Gateway: intent compilation.
 Voice Agent API + WebSocket: agent configuration and voice interaction.
+Assembler builds the Blueprint locally before sending an agent configuration to the Voice Agent API.
 
 Speaker note: external AssemblyAI endpoints could not be live-tested in this network. Local verification uses mocks; no successful live voice call is claimed.
 

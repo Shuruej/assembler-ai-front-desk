@@ -1,60 +1,73 @@
-import { AGENT_BLUEPRINT_SCHEMA, BlueprintValidationError, validateAgentBlueprint, type AgentBlueprint } from "./blueprint";
+import { validateAgentBlueprint, type AgentBlueprint } from "./blueprint";
 
-const GATEWAY_URL = "https://llm-gateway.assemblyai.com/v1/chat/completions";
-const SYSTEM_PROMPT = [
-  "You are designing a deployable business voice agent. Translate the user's intent into a specific, coherent blueprint, not a template.",
-  "Infer requirements only from the described workflow. Do not invent external vendors, credentials, APIs, facts, schedules, or policies. If a capability needs an external system, state a generic connection requirement unless the user explicitly names a vendor.",
-  "Use only the allowed tool kinds, operations, rule operators/actions, and workflow types in the schema. Match each tool kind to its operation: internal_record/create_record, http/http_request, webhook/send_webhook, calendar/check_availability or create_booking, escalation/escalate. Tools are capability plans, not executable code. Do not include arbitrary code or dangerous actions.",
-  "Keep data fields relevant. Convert explicit policies into structured rules where possible, including escalation conditions. Rules must have a source, operator, and action; reference an existing tool or outcome when the action needs a target.",
-  "For every calendar/http/webhook tool include a matching connectionId. Use empty arrays for categories that do not apply. Do not assume appointments, leads, Calendar, or receptionist work for every agent.",
-  "Every rule source must be the key of a collected data field or a tool input so the runtime can evaluate it. If a rule requires confirmation for a tool, include a boolean confirmed input on that tool. Keep the voice tool set small and focused (at most ten).",
-  "Use lowercase snake_case machine IDs, unique within each category. In workflow references, use only IDs from fields, tools, connections, rules, or outcomes. Use null for absent connectionId, rule value (only with exists), or rule target; use [] for absent field options or workflow references.",
-  "For calendar/check_availability tools include a required string requested_date input. For calendar/create_booking include required string slot_date, slot_time, customer_name, and phone_number inputs. For escalation/escalate include a required string reason input. These exact keys are runtime contracts.",
-  "For each tool, set outcomeId to an existing meaningful outcome ID when successful execution directly achieves that outcome; otherwise null. Do not assign a completed outcome to a mere availability lookup.",
-  "The blueprint is a design for review, not a claim that any connection or generated tool is configured or running.",
-].join("\n");
+type Field = AgentBlueprint["dataFields"][number];
+type Tool = AgentBlueprint["tools"][number];
+type Connection = AgentBlueprint["connections"][number];
+type Rule = AgentBlueprint["rules"][number];
+type Outcome = AgentBlueprint["outcomes"][number];
+type Step = AgentBlueprint["workflow"][number];
 
-export class CompilerError extends Error {
-  constructor(public code: "missing_key" | "gateway_failure" | "malformed_response" | "invalid_blueprint", message: string) { super(message); }
+export const STARTER_WORKFLOWS = [
+  { id: "auto_repair", title: "Auto Repair", description: "Bookings + safety escalation", intent: "Create an auto repair voice agent. Collect customer name and contact details, vehicle make, model and year, issue and urgency. Check availability and book a service appointment after confirmation. Escalate dangerous issues such as brake failure, smoke or fuel leaks to a person immediately; do not suggest driving an unsafe vehicle." },
+  { id: "ecommerce", title: "Ecommerce Support", description: "Order lookup + delivery support", intent: "Create an ecommerce support voice agent. Collect customer contact details and order number. Look up the order through a connected API and explain shipping status. Record delayed, missing or damaged deliveries and escalate unresolved issues to support. Never invent a status when lookup is unavailable." },
+  { id: "real_estate", title: "Real Estate", description: "Buyer qualification + requirements", intent: "Create a real estate voice agent. Qualify buyers by collecting name, contact details, budget, preferred areas, property requirements, financing readiness and purchase timeline. Save buyer requirements for follow-up by a property agent. Do not promise unverified property availability." },
+  { id: "restaurant", title: "Restaurant Reservations", description: "Availability + special requests", intent: "Create a restaurant reservations voice agent. Collect guest name, contact details, party size, preferred date and time. Check availability and offer available alternatives. Confirm reservation details before booking. Record special requests and accessibility needs; refer requests that cannot be guaranteed to staff." },
+  { id: "it_helpdesk", title: "IT Helpdesk", description: "Troubleshooting + ticket escalation", intent: "Create an IT helpdesk voice agent. Collect user name, contact details, device and issue. Guide approved troubleshooting, record steps tried, and assess severity and business impact. Create a support ticket and escalate severe or unresolved incidents. Never ask for passwords or authentication codes." },
+  { id: "property_management", title: "Property Management", description: "Maintenance intake + emergencies", intent: "Create a property management voice agent. Collect tenant details, contact information, property address and unit, maintenance issue and urgency. Save a maintenance request with access preferences. Escalate emergencies such as gas leaks, fire or major flooding immediately to the emergency contact." },
+] as const;
+export type StarterId = typeof STARTER_WORKFLOWS[number]["id"];
+
+const field = (key: string, label: string, description: string, type: Field["type"] = "string", required = true): Field => ({ key, label, description, type, required, options: [] });
+const input = (key: string, description: string, type: Tool["inputs"][number]["type"] = "string") => ({ key, description, type, required: true });
+const outcome = (id: string, label: string, description: string): Outcome => ({ id, label, description });
+const step = (id: string, label: string, description: string, type: Step["type"], references: string[]): Step => ({ id, label, description, type, references });
+const record = (id: string, name: string, description: string, fields: Field[], outcomeId: string): Tool => ({ id, name, description, kind: "internal_record", operation: "create_record", inputs: fields.map((f) => ({ ...input(f.key, f.description, f.type === "number" ? "number" : f.type === "boolean" ? "boolean" : "string"), required: f.required })), expectedResult: "Saved record", connectionId: null, outcomeId });
+const escalate: Tool = { id: "escalate_issue", name: "Escalate to a person", description: "Flag the issue for human follow-up", kind: "escalation", operation: "escalate", inputs: [input("reason", "Reason for escalation")], expectedResult: "Escalation recorded", connectionId: null, outcomeId: "escalated" };
+const urgent = (source: string, value: string): Rule => ({ id: "urgent_escalation", description: `Escalate when ${source.replaceAll("_", " ")} indicates ${value}.`, source, operator: "contains", value, action: "require_escalation", target: "escalate_issue" });
+const calendar: Connection = { id: "calendar_connection", name: "Appointment schedule", kind: "calendar", reason: "Check availability and book a confirmed time with Google Calendar or internal slots", required: true };
+const availability: Tool = { id: "check_availability", name: "Check availability", description: "Look up available appointment times", kind: "calendar", operation: "check_availability", inputs: [input("requested_date", "Preferred date")], expectedResult: "Available times", connectionId: calendar.id, outcomeId: null };
+const booking: Tool = { id: "create_booking", name: "Book appointment", description: "Book a selected time after confirmation", kind: "calendar", operation: "create_booking", inputs: [input("slot_date", "Available date"), input("slot_time", "Available time"), input("customer_name", "Customer name"), input("phone_number", "Customer phone")], expectedResult: "Booking confirmation", connectionId: calendar.id, outcomeId: "booked" };
+type Profile = { role: string; fields: Field[]; tools: Tool[]; connections: Connection[]; rules: Rule[]; outcomes: Outcome[]; workflow: Step[]; knowledge: string[] };
+
+function profile(id: StarterId | null): Profile {
+  const name = field("customer_name", "Customer name", "Name of the caller");
+  const phone = field("phone_number", "Phone number", "Number for follow-up", "phone");
+  if (id === "auto_repair") {
+    const fields = [name, phone, field("vehicle", "Vehicle", "Make, model and year"), field("issue", "Vehicle issue", "Problem with the vehicle"), field("urgency", "Urgency", "Whether the issue is dangerous or routine")];
+    return { role: "Auto repair intake and booking agent", fields, tools: [record("save_service_request", "Save service request", "Record vehicle and issue", fields, "request_saved"), availability, booking, escalate], connections: [calendar], rules: [urgent("urgency", "emergency")], outcomes: [outcome("request_saved", "Request saved", "Service issue recorded"), outcome("booked", "Appointment booked", "Confirmed service time"), outcome("escalated", "Safety issue escalated", "Dangerous issue flagged for a person")], workflow: [step("collect_details", "Collect vehicle details", "Ask about the customer, vehicle, issue and urgency", "collect", fields.map((f) => f.key)), step("check_safety", "Check for danger", "Escalate before routine booking when needed", "decision", ["urgent_escalation"]), step("save_request", "Save the request", "Keep the intake details", "tool", ["save_service_request"]), step("offer_time", "Offer a service time", "Check availability, then book after confirmation", "tool", [availability.id, booking.id])], knowledge: ["Service hours and emergency escalation contact must be supplied."] };
+  }
+  if (id === "ecommerce") {
+    const fields = [name, phone, field("order_number", "Order number", "Customer order reference"), field("delivery_issue", "Delivery issue", "Late, missing or damaged delivery details", "string", false)];
+    const lookup: Tool = { id: "lookup_order", name: "Look up order", description: "Fetch verified order and shipping status", kind: "http", operation: "http_request", inputs: [input("order_number", "Order reference")], expectedResult: "Verified order status", connectionId: "order_api", outcomeId: "status_found" };
+    return { role: "Ecommerce order support agent", fields, tools: [lookup, record("save_support_request", "Save support request", "Record delivery concerns", fields, "request_saved"), escalate], connections: [{ id: "order_api", name: "Order API", kind: "http", reason: "Look up real order and shipping status", required: true }], rules: [urgent("delivery_issue", "missing")], outcomes: [outcome("status_found", "Status found", "Verified status shared"), outcome("request_saved", "Support request saved", "Delivery issue recorded"), outcome("escalated", "Issue escalated", "Unresolved concern referred to support")], workflow: [step("collect_order", "Collect order number", "Identify customer and order", "collect", ["order_number", "phone_number"]), step("lookup_status", "Look up the order", "Use a configured order API; never invent status", "tool", ["lookup_order", "order_api"]), step("record_issue", "Handle delivery issue", "Record the concern and escalate when required", "tool", ["save_support_request", "escalate_issue"])], knowledge: ["Order API and support escalation process must be configured."] };
+  }
+  if (id === "real_estate") {
+    const fields = [name, phone, field("budget", "Budget", "Purchase budget", "number"), field("areas", "Preferred areas", "Locations the buyer is considering"), field("requirements", "Property requirements", "Size, type and must-haves"), field("financing", "Financing", "Financing readiness"), field("timeline", "Timeline", "Expected purchase timeframe")];
+    return { role: "Buyer qualification agent", fields, tools: [record("save_buyer", "Save buyer inquiry", "Record buyer requirements for follow-up", fields, "buyer_captured")], connections: [], rules: [], outcomes: [outcome("buyer_captured", "Buyer inquiry captured", "Requirements saved for an agent")], workflow: [step("qualify_buyer", "Qualify the buyer", "Collect budget, areas, needs, financing and timing", "collect", fields.map((f) => f.key)), step("save_buyer_details", "Save the inquiry", "Keep details for follow-up", "tool", ["save_buyer"])], knowledge: ["Current property availability must be supplied separately; do not promise unverified listings."] };
+  }
+  if (id === "restaurant") {
+    const fields = [name, phone, field("party_size", "Party size", "Number of guests", "number"), field("reservation_date", "Date", "Requested date", "date"), field("reservation_time", "Time", "Requested time"), field("special_requests", "Special requests", "Guest or accessibility requests", "string", false)];
+    return { role: "Restaurant reservations agent", fields, tools: [availability, booking, record("save_reservation_request", "Save reservation request", "Record guest details", fields, "request_saved")], connections: [calendar], rules: [], outcomes: [outcome("request_saved", "Request saved", "Reservation details captured"), outcome("booked", "Reservation booked", "Confirmed time booked")], workflow: [step("collect_party", "Collect party details", "Ask for party size, date, time and requests", "collect", fields.map((f) => f.key)), step("find_table", "Check availability", "Offer available times", "tool", [availability.id]), step("confirm_table", "Confirm reservation", "Book after guest confirmation", "tool", [booking.id])], knowledge: ["Restaurant hours, availability and special-request policy must be supplied."] };
+  }
+  if (id === "it_helpdesk") {
+    const fields = [name, phone, field("device", "Device", "Affected device"), field("issue", "Issue", "Problem and symptoms"), field("troubleshooting", "Steps tried", "Troubleshooting attempted", "string", false), field("severity", "Severity", "Business impact and urgency")];
+    return { role: "IT support intake agent", fields, tools: [record("create_ticket", "Create support ticket", "Save issue and troubleshooting", fields, "ticket_created"), escalate], connections: [], rules: [urgent("severity", "critical")], outcomes: [outcome("ticket_created", "Ticket created", "Support issue saved"), outcome("escalated", "Incident escalated", "Severe issue flagged")], workflow: [step("identify_issue", "Identify the problem", "Collect user, device, issue and impact", "collect", fields.map((f) => f.key)), step("record_ticket", "Record support ticket", "Save steps already tried", "tool", ["create_ticket"]), step("escalate_critical", "Escalate when needed", "Flag critical incidents", "decision", ["urgent_escalation", "escalate_issue"])], knowledge: ["Supply approved troubleshooting steps; never request passwords or codes."] };
+  }
+  if (id === "property_management") {
+    const fields = [name, phone, field("property", "Property", "Building or address"), field("unit", "Unit", "Tenant unit"), field("issue", "Maintenance issue", "Problem and affected area"), field("urgency", "Urgency", "Routine or emergency"), field("access_preferences", "Access preferences", "When maintenance may enter", "string", false)];
+    return { role: "Property maintenance intake agent", fields, tools: [record("create_maintenance_request", "Create maintenance request", "Record the tenant issue", fields, "request_saved"), escalate], connections: [], rules: [urgent("urgency", "emergency")], outcomes: [outcome("request_saved", "Request saved", "Maintenance issue recorded"), outcome("escalated", "Emergency escalated", "Emergency flagged for a person")], workflow: [step("collect_maintenance", "Collect maintenance details", "Identify tenant, unit, issue and urgency", "collect", fields.map((f) => f.key)), step("check_emergency", "Check for emergency", "Escalate urgent safety issues", "decision", ["urgent_escalation"]), step("save_maintenance", "Save maintenance request", "Record issue for the property team", "tool", ["create_maintenance_request"])], knowledge: ["Emergency contact and maintenance process must be supplied."] };
+  }
+  const fields = [name, phone, field("request", "Caller request", "What the caller needs")];
+  return { role: "Business workflow agent", fields, tools: [record("save_request", "Save caller request", "Record request for follow-up", fields, "request_saved")], connections: [], rules: [], outcomes: [outcome("request_saved", "Request saved", "Caller details recorded")], workflow: [step("understand_request", "Understand the request", "Collect caller details and reason for calling", "collect", fields.map((f) => f.key)), step("record_request", "Record the request", "Save details for the business", "tool", ["save_request"])], knowledge: ["Add business facts, policies and integrations before relying on external actions."] };
 }
 
-export async function compileAgentBlueprint(intent: string): Promise<AgentBlueprint> {
-  const key = process.env.ASSEMBLYAI_API_KEY;
-  if (!key) throw new CompilerError("missing_key", "The blueprint compiler is not configured.");
-  let response: Response;
-  try {
-    response = await fetch(GATEWAY_URL, {
-      method: "POST",
-      headers: { authorization: key, "content-type": "application/json" },
-      body: JSON.stringify({
-        model: process.env.ASSEMBLER_COMPILER_MODEL || "openai/gpt-5-nano",
-        stream: false,
-        messages: [{ role: "system", content: SYSTEM_PROMPT }, { role: "user", content: intent }],
-        response_format: { type: "json_schema", json_schema: { name: "agent_blueprint", strict: true, schema: AGENT_BLUEPRINT_SCHEMA } },
-      }),
-      signal: AbortSignal.timeout(60000),
-    });
-  } catch {
-    throw new CompilerError("gateway_failure", "The blueprint service could not be reached. Please retry.");
-  }
-  if (!response.ok) throw new CompilerError("gateway_failure", "The blueprint service could not complete the request. Please retry.");
-  let content: unknown;
-  try {
-    const payload = await response.json();
-    content = payload?.choices?.[0]?.message?.content;
-  } catch {
-    throw new CompilerError("malformed_response", "The blueprint service returned an unreadable response. Please retry.");
-  }
-  if (typeof content !== "string") throw new CompilerError("malformed_response", "The blueprint service returned an incomplete response. Please retry.");
-  let parsed: unknown;
-  try { parsed = JSON.parse(content); }
-  catch { throw new CompilerError("malformed_response", "The blueprint service returned invalid JSON. Please retry."); }
-  try { return validateAgentBlueprint(parsed); }
-  catch (error) {
-    if (error instanceof BlueprintValidationError) {
-      console.error("Blueprint validation failed:", error.message);
-      throw new CompilerError("invalid_blueprint", "The generated blueprint was incomplete. Please retry or clarify your description.");
-    }
-    throw error;
-  }
+/** Deterministic local assembly; the description stays editable and is never sent to a model. */
+export function assembleAgentBlueprint(intent: string, starterId: StarterId | null = null): AgentBlueprint {
+  const selected = STARTER_WORKFLOWS.find((starter) => starter.id === starterId);
+  if (starterId && !selected) throw new Error("Unknown starter workflow.");
+  const description = intent.trim();
+  if (description.length < 20 || description.length > 5000) throw new Error("Describe the agent in 20 to 5,000 characters.");
+  const details = profile(starterId);
+  const [objective, ...remainingIntent] = description.match(/[\s\S]{1,1800}/g) ?? [];
+  return validateAgentBlueprint({ version: "1", identity: { name: selected ? `${selected.title} Agent` : "Workflow Agent", role: details.role }, objective, greeting: "Hello, how can I help you today?", behavior: { instructions: [...remainingIntent.map((part) => `Additional workflow detail: ${part.trim()}`), "Follow the described workflow and collect the listed details.", "Confirm details before taking an action. Only claim success after its tool result confirms it.", "If a connection or fact is unavailable, explain this and offer human follow-up."] }, knowledge: { requirements: details.knowledge }, dataFields: details.fields, tools: details.tools, connections: details.connections, rules: details.rules, outcomes: details.outcomes, workflow: details.workflow });
 }

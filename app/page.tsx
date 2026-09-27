@@ -4,6 +4,7 @@ import Link from "next/link";
 import { FormEvent, KeyboardEvent, useRef, useState } from "react";
 import { AssemblerLogo } from "@/components/assembler/AssemblerLogo";
 import type { AgentBlueprint } from "@/lib/assembler/blueprint";
+import { STARTER_WORKFLOWS, type StarterId } from "@/lib/assembler/compiler";
 import {
   DEFAULT_FOLLOW_UP_PREFERENCES,
   type FollowUpPreferences,
@@ -50,39 +51,6 @@ const DEFAULT_BUSINESS_HOURS_START = "09:00";
 const DEFAULT_BUSINESS_HOURS_END = "18:00";
 const DEFAULT_APPOINTMENT_DURATION_MINUTES = 60;
 
-const STARTER_WORKFLOWS = [
-  {
-    "title": "Auto Repair",
-    "description": "Bookings + safety escalation",
-    "intent": "Create an auto repair voice agent. Collect customer name and contact details, vehicle make, model and year, issue and urgency. Check availability and book a service appointment after confirmation. Escalate dangerous issues such as brake failure, smoke or fuel leaks to a person immediately; do not suggest driving an unsafe vehicle."
-  },
-  {
-    "title": "Ecommerce Support",
-    "description": "Order lookup + delivery support",
-    "intent": "Create an ecommerce support voice agent. Collect customer contact details and order number. Look up the order through a connected API and explain shipping status. Record delayed, missing or damaged deliveries and escalate unresolved issues to support. Never invent a status when lookup is unavailable."
-  },
-  {
-    "title": "Real Estate",
-    "description": "Buyer qualification + requirements",
-    "intent": "Create a real estate voice agent. Qualify buyers by collecting name, contact details, budget, preferred areas, property requirements, financing readiness and purchase timeline. Save buyer requirements for follow-up by a property agent. Do not promise unverified property availability."
-  },
-  {
-    "title": "Restaurant Reservations",
-    "description": "Availability + special requests",
-    "intent": "Create a restaurant reservations voice agent. Collect guest name, contact details, party size, preferred date and time. Check availability and offer available alternatives. Confirm reservation details before booking. Record special requests and accessibility needs; refer requests that cannot be guaranteed to staff."
-  },
-  {
-    "title": "IT Helpdesk",
-    "description": "Troubleshooting + ticket escalation",
-    "intent": "Create an IT helpdesk voice agent. Collect user name, contact details, device and issue. Guide approved troubleshooting, record steps tried, and assess severity and business impact. Create a support ticket and escalate severe or unresolved incidents. Never ask for passwords or authentication codes."
-  },
-  {
-    "title": "Property Management",
-    "description": "Maintenance intake + emergencies",
-    "intent": "Create a property management voice agent. Collect tenant details, contact information, property address and unit, maintenance issue and urgency. Save a maintenance request with access preferences. Escalate emergencies such as gas leaks, fire or major flooding immediately to the emergency contact."
-  }
-];
-
 const BUILD_STEPS = [
   {
     number: "01",
@@ -126,6 +94,7 @@ export default function Home() {
   const advancedModeRef = useRef<HTMLButtonElement>(null);
   const [creationMode, setCreationMode] = useState<CreationMode>("simple");
   const [businessDescription, setBusinessDescription] = useState("");
+  const [selectedStarterId, setSelectedStarterId] = useState<StarterId | null>(null);
   const [followUpPreferences, setFollowUpPreferences] =
     useState<FollowUpPreferences>(DEFAULT_FOLLOW_UP_PREFERENCES);
   const [businessHoursStart, setBusinessHoursStart] = useState(
@@ -178,7 +147,7 @@ export default function Home() {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         ...payload,
-        ...(creationMode === "simple" && blueprint && blueprintIntent === businessDescription.trim() ? { blueprint } : {}),
+        ...(creationMode === "simple" && blueprint && blueprintIntent === businessDescription.trim() ? { blueprint: { ...blueprint, identity: { ...blueprint.identity, name: payload.name } } } : {}),
         follow_up_preferences: preferences ?? DEFAULT_FOLLOW_UP_PREFERENCES,
         confirmation_call_enabled:
           preferences?.confirm_appointments_by_phone ?? true,
@@ -210,6 +179,7 @@ export default function Home() {
     setBlueprint(null);
     setBlueprintIntent("");
     setBusinessDescription("");
+    setSelectedStarterId(null);
   }
 
   function getSimpleBusinessKnowledge(): string {
@@ -331,17 +301,17 @@ export default function Home() {
       const response = await fetch("/api/agents/compile", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ intent: trimmedDescription }),
+        body: JSON.stringify({ intent: trimmedDescription, starterId: selectedStarterId }),
       });
       const data = (await response.json()) as BlueprintResponse;
 
-      if (!response.ok || !data.blueprint) throw new Error(data.error ?? "Could not design the blueprint. Please retry.");
+      if (!response.ok || !data.blueprint) throw new Error(data.error ?? "Could not assemble the blueprint. Please retry.");
       setBlueprint(data.blueprint);
       setBlueprintIntent(trimmedDescription);
       setHasGeneratedConfig(false);
     } catch (err) {
       setConfigurationError(
-        err instanceof Error ? err.message : "Could not design the blueprint. Please retry.",
+        err instanceof Error ? err.message : "Could not assemble the blueprint. Please retry.",
       );
     } finally {
       setIsConfiguring(false);
@@ -351,6 +321,8 @@ export default function Home() {
   function openCompatibleCreation() {
     if (!blueprint || blueprintIntent !== businessDescription.trim()) return;
     setAgentName(blueprint.identity.name);
+    setIndustry(({ auto_repair: "Auto repair", ecommerce: "Ecommerce", real_estate: "Real estate", restaurant: "Restaurant", it_helpdesk: "IT support", property_management: "Property management" } as Record<string, string>)[selectedStarterId ?? ""] ?? "");
+    setAgentPurpose(({ auto_repair: "appointment_booking", ecommerce: "customer_support", real_estate: "lead_qualification", restaurant: "appointment_booking", it_helpdesk: "customer_support", property_management: "customer_support" } as Record<string, string>)[selectedStarterId ?? ""] ?? "general_receptionist");
     setHasGeneratedConfig(true);
     setError(null);
   }
@@ -647,8 +619,8 @@ export default function Home() {
             {creationMode === "simple" ? (
               <div className="mt-6 space-y-6">
                 <section aria-labelledby="starter-title">
-                  <div className="flex flex-wrap items-center justify-between gap-3"><div><h3 id="starter-title" className="font-semibold">Starter Workflows</h3><p className="mt-1 text-sm text-[#687080]">Choose a starting point. Every detail is yours to edit.</p></div><button className="assembler-primary-button" type="button" disabled={isConfiguring || isSubmitting} onClick={() => { setBusinessDescription(""); setBlueprint(null); setHasGeneratedConfig(false); setConfigurationError(null); document.getElementById("business-description")?.focus(); }}>Start from scratch</button></div>
-                  <div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-3">{STARTER_WORKFLOWS.map((starter) => <button key={starter.title} type="button" disabled={isConfiguring || isSubmitting} aria-pressed={businessDescription === starter.intent} className="starter-workflow" onClick={() => { setBusinessDescription(starter.intent); setHasGeneratedConfig(false); setConfigurationError(null); document.getElementById("business-description")?.focus(); }}><svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" className="h-5 w-5 shrink-0 text-[#1769FF]"><path d="M4 4h6v6H4zM14 14h6v6h-6zM14 4h6v6h-6zM4 14h6v6H4z" /></svg><span className="min-w-0"><span className="block text-sm font-semibold">{starter.title}</span><span className="mt-1 block text-xs leading-5 text-[#687080]">{starter.description}</span></span></button>)}</div>
+                  <div className="flex flex-wrap items-center justify-between gap-3"><div><h3 id="starter-title" className="font-semibold">Starter Workflows</h3><p className="mt-1 text-sm text-[#687080]">Curated fields and actions; edit the description before review.</p></div><button className="assembler-primary-button" type="button" disabled={isConfiguring || isSubmitting} onClick={() => { setBusinessDescription(""); setSelectedStarterId(null); setAgentName(""); setBlueprint(null); setHasGeneratedConfig(false); setConfigurationError(null); document.getElementById("business-description")?.focus(); }}>Start from scratch</button></div>
+                  <div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-3">{STARTER_WORKFLOWS.map((starter) => <button key={starter.id} type="button" disabled={isConfiguring || isSubmitting} aria-pressed={selectedStarterId === starter.id} className="starter-workflow" onClick={() => { setSelectedStarterId(starter.id); setBusinessDescription(starter.intent); setAgentName(""); setBlueprint(null); setFollowUpPreferences(starter.id === "auto_repair" || starter.id === "restaurant" ? DEFAULT_FOLLOW_UP_PREFERENCES : { confirm_appointments_by_phone: false, collect_feedback_after_confirmation: false }); setHasGeneratedConfig(false); setConfigurationError(null); document.getElementById("business-description")?.focus(); }}><svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" className="h-5 w-5 shrink-0 text-[#1769FF]"><path d="M4 4h6v6H4zM14 14h6v6h-6zM14 4h6v6h-6zM4 14h6v6H4z" /></svg><span className="min-w-0"><span className="block text-sm font-semibold">{starter.title}</span><span className="mt-1 block text-xs leading-5 text-[#687080]">{starter.description}</span></span></button>)}</div>
                 </section>
                 <form className="assembler-panel p-5 sm:p-7" onSubmit={handleConfigureAgent}>
                   <div className="flex items-center gap-3">
@@ -752,14 +724,14 @@ export default function Home() {
 
                   <div className="mt-6 flex flex-col gap-4 border-t border-[#E1E4E9] pt-5 sm:flex-row sm:items-center sm:justify-between">
                     <p className="max-w-lg text-sm leading-6 text-[#687080]">
-                      First review a blueprint. Generated tools and connections are plans, not active capabilities.
+                      First review a blueprint. Blueprint tools and connections are plans, not active capabilities.
                     </p>
                     <button
                       className="assembler-primary-button"
                       disabled={isConfiguring}
                       type="submit"
                     >
-                      {isConfiguring ? "Designing blueprint..." : blueprint ? "Regenerate blueprint" : "Design blueprint"}
+                      {isConfiguring ? "Assembling blueprint..." : blueprint ? "Rebuild blueprint" : "Build blueprint"}
                     </button>
                   </div>
                   {configurationError ? (
@@ -771,8 +743,8 @@ export default function Home() {
 
                 {isConfiguring ? (
                   <div aria-live="polite" className="assembler-panel border-l-4 border-[#1769FF] p-5 sm:p-7">
-                    <p className="font-semibold">Designing your blueprint</p>
-                    <p className="mt-2 text-sm leading-6 text-[#687080]">Understanding the workflow, identifying data and capabilities, and structuring rules in one request.</p>
+                    <p className="font-semibold">Assembling your workflow</p>
+                    <p className="mt-2 text-sm leading-6 text-[#687080]">Building a local blueprint from your description and the selected starter configuration. Review the proposed fields and actions before creation.</p>
                   </div>
                 ) : null}
 
@@ -787,7 +759,7 @@ export default function Home() {
                       <a className="assembler-secondary-button" href="#business-description">Edit description</a>
                     </div>
                     {blueprintIntent !== businessDescription.trim() ? (
-                      <p className="rounded-lg border border-[#F2D6A7] bg-[#FFF8E8] p-3 text-sm text-[#805A17]">Description changed. Regenerate the blueprint before continuing.</p>
+                      <p className="rounded-lg border border-[#F2D6A7] bg-[#FFF8E8] p-3 text-sm text-[#805A17]">Description changed. Rebuild the blueprint before continuing.</p>
                     ) : null}
                     <div>
                       <h4 className="font-semibold">Agent</h4>

@@ -1,5 +1,7 @@
 # Submission freeze — 27 September 2026
 
+> This is the record of the earlier submission-polish commit. The later deadline fix replaced Guided Gateway compilation with local Blueprint assembly; see README for the current flow.
+
 ## Scope
 
 Final UI and documentation polish only. Backend architecture, API contracts, voice sequencing, database schema and RLS policies were preserved. No production records were inserted.

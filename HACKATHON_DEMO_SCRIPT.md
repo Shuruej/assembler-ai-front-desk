@@ -6,20 +6,20 @@
 
 ## Presentation path (3 minutes)
 
-1. Open the creation screen. Select Auto Repair, edit the business intent, then show the other five starter workflows. These are editable descriptions using the same compiler.
-2. If AssemblyAI is reachable, select Design blueprint. Review Agent, Data, Tools, Connections, Rules, Outcomes and Workflow before creating anything.
-3. If the compiler is unavailable, show its actual error. Continue with an existing saved blueprint in Agent Studio if one exists. Otherwise use the architecture and example prompts below; do not substitute fabricated generated output.
+1. Open the creation screen. Select Auto Repair, edit the business intent, then show the other five starter workflows. Each provides curated structured configuration for local Blueprint assembly.
+2. Select Build blueprint. Review Agent, Data, Tools, Connections, Rules, Outcomes and Workflow before creating anything. This step needs no external model or network connection.
+3. Show Ecommerce and Real Estate next: each produces different fields, tools and connection requirements. Return to Auto Repair for agent creation.
 4. In Agent Studio, show the selected agent, fields, tools, connection requirements and rules. Explain that configuration does not prove execution.
 5. Show Test Agent and explain the connection requirement. Only start a real call when connectivity is available. Show records and tool activity only when backed by real results.
-6. Close: Any business workflow → a deployable voice agent is the vision. Today, Assembler provides the compiled structure and generic execution path.
+6. Close: Any business workflow → a deployable voice agent is the vision. Today, Assembler assembles reviewed structure locally and uses the existing Voice Agent creation path.
 
 ## Verified locally
 
-The automated suite exercises blueprint validation, compiler failure handling, tool contracts, deterministic rules, record validation, connection encryption and voice result ordering using mocks. Final typecheck, test and build results are reported in the submission freeze report. These checks do not establish live service connectivity.
+The automated suite exercises local Blueprint assembly, validation, tool contracts, deterministic rules, record validation, connection encryption and voice result ordering using mocks. These checks do not establish live service connectivity.
 
 ## Requires external AssemblyAI connection
 
-Live intent compilation, remote agent creation or updates, and a browser voice call. External AssemblyAI endpoints could not be live-tested in the current network environment. No successful live voice call is claimed. Configured HTTP/webhook services and optional Google Calendar also need their own working connections.
+Remote agent creation or updates and a browser voice call. Blueprint assembly is local. No successful live voice call is claimed from the current environment. Configured HTTP/webhook services and optional Google Calendar also need their own working connections.
 
 ## Six example prompts
 

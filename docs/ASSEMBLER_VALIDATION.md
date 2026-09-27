@@ -1,5 +1,7 @@
 # Assembler cross-business validation
 
+> Historical record from the former Gateway-based compiler. Guided Blueprint assembly now runs locally and does not call the LLM Gateway. The live-service results below remain a record of that earlier attempt; see the current README for the active flow.
+
 Recorded 2026-09-27. **No live blueprint or voice session was successfully produced during this run.** The AssemblyAI LLM Gateway and Voice Agent token endpoints both timed out while establishing HTTPS connections. The configured Supabase project hostname did not resolve, and this workspace has no Supabase CLI, project link, `psql`, or signed-in SQL editor session. The additive `20260927120000_assembler_core.sql` migration was **not applied**. Automated tests use mocked external services; they do not establish live business generality.
 
 ## Verification evidence

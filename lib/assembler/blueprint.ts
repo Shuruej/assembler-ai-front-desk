@@ -30,7 +30,7 @@ const object = (properties: Record<string, Schema>) => ({ type: "object", proper
 const enumeration = (values: readonly string[]) => ({ type: "string", enum: values });
 const nullable = (schema: Schema) => ({ anyOf: [schema, { type: "null" }] });
 
-// Kept beside the domain type and its validator; the gateway receives this exact shape.
+// Kept beside the domain type and validator for compatibility with saved Blueprints.
 export const AGENT_BLUEPRINT_SCHEMA = object({
   version: { type: "string", enum: ["1"] },
   identity: object({ name: string, role: string }),
