@@ -27,6 +27,15 @@ type CreatedAgent = {
 type AgentResponse = CreatedAgent & { error?: string };
 type BlueprintResponse = { blueprint?: AgentBlueprint; error?: string };
 
+const STARTER_ICONS: Record<StarterId, string> = {
+  auto_repair: "/assembler/icons/starters/auto-repair.png",
+  ecommerce: "/assembler/icons/starters/ecommerce-support.png",
+  real_estate: "/assembler/icons/starters/real-estate.png",
+  restaurant: "/assembler/icons/starters/restaurant.png",
+  it_helpdesk: "/assembler/icons/starters/it-helpdesk.png",
+  property_management: "/assembler/icons/starters/property-management.png",
+};
+
 const AGENT_PURPOSE_OPTIONS = [
   { value: "general_receptionist", label: "General receptionist" },
   { value: "appointment_booking", label: "Appointment booking" },
@@ -620,7 +629,7 @@ export default function Home() {
               <div className="mt-6 space-y-6">
                 <section aria-labelledby="starter-title">
                   <div className="flex flex-wrap items-center justify-between gap-3"><div><h3 id="starter-title" className="font-semibold">Starter Workflows</h3><p className="mt-1 text-sm text-[#687080]">Curated fields and actions; edit the description before review.</p></div><button className="assembler-primary-button" type="button" disabled={isConfiguring || isSubmitting} onClick={() => { setBusinessDescription(""); setSelectedStarterId(null); setAgentName(""); setBlueprint(null); setHasGeneratedConfig(false); setConfigurationError(null); document.getElementById("business-description")?.focus(); }}>Start from scratch</button></div>
-                  <div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-3">{STARTER_WORKFLOWS.map((starter) => <button key={starter.id} type="button" disabled={isConfiguring || isSubmitting} aria-pressed={selectedStarterId === starter.id} className="starter-workflow" onClick={() => { setSelectedStarterId(starter.id); setBusinessDescription(starter.intent); setAgentName(""); setBlueprint(null); setFollowUpPreferences(starter.id === "auto_repair" || starter.id === "restaurant" ? DEFAULT_FOLLOW_UP_PREFERENCES : { confirm_appointments_by_phone: false, collect_feedback_after_confirmation: false }); setHasGeneratedConfig(false); setConfigurationError(null); document.getElementById("business-description")?.focus(); }}><svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" className="h-5 w-5 shrink-0 text-[#1769FF]"><path d="M4 4h6v6H4zM14 14h6v6h-6zM14 4h6v6h-6zM4 14h6v6H4z" /></svg><span className="min-w-0"><span className="block text-sm font-semibold">{starter.title}</span><span className="mt-1 block text-xs leading-5 text-[#687080]">{starter.description}</span></span></button>)}</div>
+                  <div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-3">{STARTER_WORKFLOWS.map((starter) => <button key={starter.id} type="button" disabled={isConfiguring || isSubmitting} aria-pressed={selectedStarterId === starter.id} className="starter-workflow" onClick={() => { setSelectedStarterId(starter.id); setBusinessDescription(starter.intent); setAgentName(""); setBlueprint(null); setFollowUpPreferences(starter.id === "auto_repair" || starter.id === "restaurant" ? DEFAULT_FOLLOW_UP_PREFERENCES : { confirm_appointments_by_phone: false, collect_feedback_after_confirmation: false }); setHasGeneratedConfig(false); setConfigurationError(null); document.getElementById("business-description")?.focus(); }}><img aria-hidden="true" alt="" src={STARTER_ICONS[starter.id]} className="h-10 w-10 shrink-0 object-contain" /><span className="min-w-0"><span className="block text-sm font-semibold">{starter.title}</span><span className="mt-1 block text-xs leading-5 text-[#687080]">{starter.description}</span></span></button>)}</div>
                 </section>
                 <form className="assembler-panel p-5 sm:p-7" onSubmit={handleConfigureAgent}>
                   <div className="flex items-center gap-3">
