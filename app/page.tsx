@@ -50,10 +50,37 @@ const DEFAULT_BUSINESS_HOURS_START = "09:00";
 const DEFAULT_BUSINESS_HOURS_END = "18:00";
 const DEFAULT_APPOINTMENT_DURATION_MINUTES = 60;
 
-const INSPIRATION_EXAMPLES = [
-  "An auto-repair agent that records vehicle issues, checks service times, and flags emergencies.",
-  "An online-store agent that looks up orders through an API and escalates unresolved requests.",
-  "A property agent that qualifies buyers by budget, location, and timeline.",
+const STARTER_WORKFLOWS = [
+  {
+    "title": "Auto Repair",
+    "description": "Bookings + safety escalation",
+    "intent": "Create an auto repair voice agent. Collect customer name and contact details, vehicle make, model and year, issue and urgency. Check availability and book a service appointment after confirmation. Escalate dangerous issues such as brake failure, smoke or fuel leaks to a person immediately; do not suggest driving an unsafe vehicle."
+  },
+  {
+    "title": "Ecommerce Support",
+    "description": "Order lookup + delivery support",
+    "intent": "Create an ecommerce support voice agent. Collect customer contact details and order number. Look up the order through a connected API and explain shipping status. Record delayed, missing or damaged deliveries and escalate unresolved issues to support. Never invent a status when lookup is unavailable."
+  },
+  {
+    "title": "Real Estate",
+    "description": "Buyer qualification + requirements",
+    "intent": "Create a real estate voice agent. Qualify buyers by collecting name, contact details, budget, preferred areas, property requirements, financing readiness and purchase timeline. Save buyer requirements for follow-up by a property agent. Do not promise unverified property availability."
+  },
+  {
+    "title": "Restaurant Reservations",
+    "description": "Availability + special requests",
+    "intent": "Create a restaurant reservations voice agent. Collect guest name, contact details, party size, preferred date and time. Check availability and offer available alternatives. Confirm reservation details before booking. Record special requests and accessibility needs; refer requests that cannot be guaranteed to staff."
+  },
+  {
+    "title": "IT Helpdesk",
+    "description": "Troubleshooting + ticket escalation",
+    "intent": "Create an IT helpdesk voice agent. Collect user name, contact details, device and issue. Guide approved troubleshooting, record steps tried, and assess severity and business impact. Create a support ticket and escalate severe or unresolved incidents. Never ask for passwords or authentication codes."
+  },
+  {
+    "title": "Property Management",
+    "description": "Maintenance intake + emergencies",
+    "intent": "Create a property management voice agent. Collect tenant details, contact information, property address and unit, maintenance issue and urgency. Save a maintenance request with access preferences. Escalate emergencies such as gas leaks, fire or major flooding immediately to the emergency contact."
+  }
 ];
 
 const BUILD_STEPS = [
@@ -471,7 +498,7 @@ export default function Home() {
             <input
               id={`${prefix}-industry`}
               className="assembler-input"
-              placeholder="e.g. salon, dental, restaurant"
+              placeholder="e.g. retail, property management, IT support"
               type="text"
               value={industry}
               onChange={(event) => setIndustry(event.target.value)}
@@ -513,7 +540,7 @@ export default function Home() {
   return (
     <main className="min-h-screen bg-[#F7F8FA] text-[#17191D]">
       <header className="border-b border-[#E1E4E9] bg-white/95">
-        <nav className="mx-auto flex max-w-7xl items-center justify-between px-4 py-3 sm:px-6 lg:px-8">
+        <nav className="mx-auto flex max-w-7xl flex-wrap items-center justify-between gap-3 px-4 py-3 sm:px-6 lg:px-8">
           <Link
             className="flex items-center gap-3 rounded-lg focus:outline-none focus-visible:ring-2 focus-visible:ring-[#1769FF] focus-visible:ring-offset-4"
             href="/"
@@ -536,10 +563,10 @@ export default function Home() {
           <div className="grid gap-8 lg:grid-cols-[minmax(0,1fr)_22rem] lg:items-end">
             <div className="max-w-3xl">
               <p className="text-xs font-semibold uppercase tracking-[0.16em] text-[#1769FF]">
-                From business intent to working voice agents
+                Built on AssemblyAI
               </p>
               <h1 className="mt-3 max-w-[18ch] text-4xl font-semibold leading-[1.05] tracking-[-0.045em] sm:text-5xl lg:text-[3.75rem]">
-                Build an agent from business intent
+                From business intent to working voice agents.
               </h1>
               <p className="mt-4 max-w-2xl text-base leading-7 text-[#5F6877] sm:text-lg sm:leading-8">
                 Assembler turns a business workflow into a voice agent designed
@@ -619,6 +646,10 @@ export default function Home() {
 
             {creationMode === "simple" ? (
               <div className="mt-6 space-y-6">
+                <section aria-labelledby="starter-title">
+                  <div className="flex flex-wrap items-center justify-between gap-3"><div><h3 id="starter-title" className="font-semibold">Starter Workflows</h3><p className="mt-1 text-sm text-[#687080]">Choose a starting point. Every detail is yours to edit.</p></div><button className="assembler-primary-button" type="button" disabled={isConfiguring || isSubmitting} onClick={() => { setBusinessDescription(""); setBlueprint(null); setHasGeneratedConfig(false); setConfigurationError(null); document.getElementById("business-description")?.focus(); }}>Start from scratch</button></div>
+                  <div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-3">{STARTER_WORKFLOWS.map((starter) => <button key={starter.title} type="button" disabled={isConfiguring || isSubmitting} aria-pressed={businessDescription === starter.intent} className="starter-workflow" onClick={() => { setBusinessDescription(starter.intent); setHasGeneratedConfig(false); setConfigurationError(null); document.getElementById("business-description")?.focus(); }}><svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" className="h-5 w-5 shrink-0 text-[#1769FF]"><path d="M4 4h6v6H4zM14 14h6v6h-6zM14 4h6v6h-6zM4 14h6v6H4z" /></svg><span className="min-w-0"><span className="block text-sm font-semibold">{starter.title}</span><span className="mt-1 block text-xs leading-5 text-[#687080]">{starter.description}</span></span></button>)}</div>
+                </section>
                 <form className="assembler-panel p-5 sm:p-7" onSubmit={handleConfigureAgent}>
                   <div className="flex items-center gap-3">
                     <span className="assembler-step-number">01</span>
@@ -643,19 +674,7 @@ export default function Home() {
                     }}
                   />
 
-                  <div className="mt-4 rounded-xl bg-[#F5F7FA] p-4">
-                    <p className="text-xs font-semibold uppercase tracking-[0.12em] text-[#687080]">
-                      Inspiration
-                    </p>
-                    <ul className="mt-3 space-y-2 text-sm leading-6 text-[#5F6877]">
-                      {INSPIRATION_EXAMPLES.map((example) => (
-                        <li className="flex gap-2" key={example}>
-                          <span aria-hidden="true" className="mt-[0.65rem] h-1 w-1 shrink-0 rounded-full bg-[#1769FF]" />
-                          <span>{example}</span>
-                        </li>
-                      ))}
-                    </ul>
-                  </div>
+
 
                   <fieldset
                     className="mt-6 border-t border-[#E1E4E9] pt-5"
@@ -761,7 +780,7 @@ export default function Home() {
                   <section aria-label="Blueprint review" className="assembler-panel space-y-6 p-5 sm:p-7">
                     <div className="flex flex-wrap items-start justify-between gap-3 border-b border-[#E1E4E9] pb-5">
                       <div>
-                        <p className="text-xs font-semibold uppercase tracking-[0.14em] text-[#1769FF]">Blueprint designed · Review only</p>
+                        <p className="text-xs font-semibold uppercase tracking-[0.14em] text-[#1769FF]">Blueprint ready · Not tested</p>
                         <h3 className="mt-2 text-2xl font-semibold">{blueprint.identity.name}</h3>
                         <p className="mt-1 text-sm text-[#687080]">{blueprint.identity.role}</p>
                       </div>
@@ -781,30 +800,30 @@ export default function Home() {
                       {blueprint.knowledge.requirements.length ? <ul className="mt-2 list-disc space-y-1 pl-5 text-sm text-[#414957]">{blueprint.knowledge.requirements.map((item, i) => <li key={i}>{item}</li>)}</ul> : <p className="mt-2 text-sm text-[#687080]">No additional knowledge specified.</p>}
                     </div>
                     <div>
-                      <h4 className="font-semibold">What it collects</h4>
+                      <h4 className="font-semibold">Data</h4>
                       {blueprint.dataFields.length ? <div className="mt-3 grid gap-2 sm:grid-cols-2">{blueprint.dataFields.map((field) => <div className="rounded-lg border border-[#E1E4E9] p-3" key={field.key}><p className="text-sm font-medium">{field.label}</p><p className="mt-1 text-xs text-[#687080]">{field.type} · {field.required ? "Required" : "Optional"}</p><p className="mt-2 text-sm text-[#414957]">{field.description}</p></div>)}</div> : <p className="mt-2 text-sm text-[#687080]">No structured fields needed.</p>}
                     </div>
                     <div>
-                      <h4 className="font-semibold">What it can do</h4>
+                      <h4 className="font-semibold">Tools</h4>
                       {blueprint.tools.length ? <div className="mt-3 space-y-2">{blueprint.tools.map((tool) => <div className="rounded-lg border border-[#E1E4E9] p-3" key={tool.id}><div className="flex flex-wrap items-center gap-2"><p className="text-sm font-medium">{tool.name}</p><span className="rounded bg-[#F0F5FF] px-2 py-0.5 text-xs text-[#0B4ED0]">{tool.kind.replaceAll("_", " ")}</span><span className="text-xs text-[#687080]">{tool.connectionId ? "Connection required" : "Planned capability"}</span></div><p className="mt-2 text-sm text-[#414957]">{tool.description}</p></div>)}</div> : <p className="mt-2 text-sm text-[#687080]">No actions planned.</p>}
                     </div>
                     <div>
-                      <h4 className="font-semibold">Connections needed</h4>
+                      <h4 className="font-semibold">Connections</h4>
                       {blueprint.connections.length ? <div className="mt-3 space-y-2">{blueprint.connections.map((connection) => <div className="rounded-lg border border-[#E1E4E9] p-3" key={connection.id}><p className="text-sm font-medium">{connection.name} <span className="font-normal text-[#687080]">· {connection.kind} · {connection.required ? "Required" : "Optional"}</span></p><p className="mt-1 text-sm text-[#414957]">{connection.reason}</p></div>)}</div> : <p className="mt-2 text-sm text-[#687080]">No external connection identified.</p>}
                     </div>
                     <div>
-                      <h4 className="font-semibold">Business rules</h4>
-                      {blueprint.rules.length ? <ul className="mt-2 space-y-2">{blueprint.rules.map((rule) => <li className="rounded-lg bg-[#F5F7FA] p-3 text-sm text-[#414957]" key={rule.id}>{rule.description}<span className="mt-1 block text-xs text-[#687080]">If {rule.source} {rule.operator.replaceAll("_", " ")}{rule.value === null ? "" : ` ${String(rule.value)}`}, {rule.action.replaceAll("_", " ")}{rule.target ? ` ${rule.target.replaceAll("_", " ")}` : ""}.</span></li>)}</ul> : <p className="mt-2 text-sm text-[#687080]">No explicit rules identified.</p>}
+                      <h4 className="font-semibold">Rules</h4>
+                      {blueprint.rules.length ? <ul className="mt-2 space-y-2">{blueprint.rules.map((rule) => <li className="rounded-lg bg-[#F5F7FA] p-3 text-sm text-[#414957]" key={rule.id}>{rule.description}<details className="mt-2 text-xs text-[#687080]"><summary className="cursor-pointer">Rule details</summary><span>If {rule.source} {rule.operator.replaceAll("_", " ")}{rule.value === null ? "" : ` ${String(rule.value)}`}, {rule.action.replaceAll("_", " ")}{rule.target ? ` ${rule.target.replaceAll("_", " ")}` : ""}.</span></details></li>)}</ul> : <p className="mt-2 text-sm text-[#687080]">No explicit rules identified.</p>}
                     </div>
                     <div>
                       <h4 className="font-semibold">Outcomes</h4>
                       {blueprint.outcomes.length ? <ul className="mt-2 space-y-2">{blueprint.outcomes.map((outcome) => <li className="text-sm text-[#414957]" key={outcome.id}><strong>{outcome.label}</strong> — {outcome.description}</li>)}</ul> : <p className="mt-2 text-sm text-[#687080]">No outcomes specified.</p>}
                     </div>
                     <div>
-                      <h4 className="font-semibold">Workflow preview</h4>
+                      <h4 className="font-semibold">Workflow</h4>
                       {blueprint.workflow.length ? <ol className="mt-3 space-y-2 border-l-2 border-[#DDE7FF] pl-4">{blueprint.workflow.map((step, i) => <li className="relative rounded-lg bg-[#F5F7FA] p-3" key={step.id}><span className="text-xs font-semibold text-[#1769FF]">{String(i + 1).padStart(2, "0")} · {step.type}</span><p className="mt-1 text-sm font-medium">{step.label}</p><p className="mt-1 text-sm text-[#687080]">{step.description}</p></li>)}</ol> : <p className="mt-2 text-sm text-[#687080]">No workflow steps specified.</p>}
                     </div>
-                    <details className="border-t border-[#E1E4E9] pt-4"><summary className="cursor-pointer text-sm font-medium text-[#1769FF]">View blueprint JSON</summary><pre className="mt-3 max-h-96 overflow-auto rounded-lg bg-[#101724] p-4 text-xs text-white">{JSON.stringify(blueprint, null, 2)}</pre></details>
+                    <details className="border-t border-[#E1E4E9] pt-4"><summary className="cursor-pointer text-sm font-medium text-[#1769FF]">Advanced: blueprint JSON</summary><pre className="mt-3 max-h-96 overflow-auto rounded-lg bg-[#101724] p-4 text-xs text-white">{JSON.stringify(blueprint, null, 2)}</pre></details>
                     <div className="border-t border-[#E1E4E9] pt-5">
                       <p className="text-sm leading-6 text-[#687080]">This blueprint is a design until you create the agent. Creation installs its approved voice tool contracts; external actions still need real connections. Review the business details before continuing.</p>
                       <button className="assembler-primary-button mt-4" disabled={blueprintIntent !== businessDescription.trim()} onClick={openCompatibleCreation} type="button">Configure blueprint agent</button>
@@ -917,7 +936,7 @@ export default function Home() {
               </ol>
               <div className="mt-6 border-t border-[#E1E4E9] pt-5">
                 <p className="text-xs font-semibold uppercase tracking-[0.14em] text-[#687080]">
-                  {blueprint && creationMode === "simple" ? "Planned blueprint tools" : "Legacy voice actions"}
+                  {blueprint && creationMode === "simple" ? "Planned blueprint tools" : "Available voice actions"}
                 </p>
                 <div className="mt-3 flex flex-wrap gap-2">
                   {(blueprint && creationMode === "simple" ? blueprint.tools.map((tool) => tool.name) : ["Lead capture", "Availability", "Booking", "Escalation"]).map(

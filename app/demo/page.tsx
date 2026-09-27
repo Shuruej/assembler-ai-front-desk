@@ -114,7 +114,7 @@ function DemoPageContent() {
   const queryAgentId = searchParams.get("agent_id")?.trim() ?? "";
   const hasQueryAgentId = queryAgentId.length > 0;
   const [agentId, setAgentId] = useState(queryAgentId);
-  const [status, setStatus] = useState("Idle");
+  const [status, setStatus] = useState("Not tested");
   const [isCalling, setIsCalling] = useState(false);
   const [transcript, setTranscript] = useState<TranscriptEntry[]>([]);
 
@@ -566,7 +566,7 @@ function DemoPageContent() {
           }
           readyRef.current = true;
           resetInactivityTimer();
-          setStatus(`Connected: ${message.session_id}`);
+          setStatus("Connected");
           addTranscript({
             id: `system-${Date.now()}`,
             role: "system",
@@ -664,7 +664,7 @@ function DemoPageContent() {
       });
 
       ws.addEventListener("error", () => {
-        setStatus("WebSocket error.");
+        setStatus("External service unavailable. The voice connection could not be established. Try again when AssemblyAI is reachable.");
       });
     } catch (error) {
       await endCallOnServer();
@@ -710,13 +710,13 @@ function DemoPageContent() {
   }, []);
 
   return (
-    <main className="min-h-screen bg-zinc-50 px-6 py-8 text-zinc-950">
+    <main className="min-h-screen bg-[#F7F8FA] px-4 py-8 text-[#17191D]">
       <div className="mx-auto flex max-w-3xl flex-col gap-6">
         <div>
-          <h1 className="text-3xl font-semibold">AI Front Desk Voice Demo</h1>
+          <Link className="assembler-secondary-button mb-5" href="/dashboard">Back to Agent Studio</Link><p className="mb-2 text-xs font-semibold uppercase tracking-widest text-[#1769FF]">Assembler · Built on AssemblyAI</p><h1 className="text-3xl font-semibold">Test your voice agent</h1>
           <p className="mt-2 text-sm text-zinc-600">
             Paste an AssemblyAI agent ID, start a browser call, and speak through your
-            microphone. Leads captured during the call are saved automatically.
+            microphone. Review captured records and tool activity in Agent Studio after the call.
           </p>
         </div>
 
@@ -736,14 +736,14 @@ function DemoPageContent() {
           {hasQueryAgentId ? (
             <p className="text-sm text-zinc-600">
               Not this agent?{" "}
-              <Link className="font-medium text-zinc-950 underline" href="/">
-                Go to the homepage to create or select another.
+              <Link className="font-medium text-[#1769FF] underline" href="/dashboard">
+                Select another agent in Agent Studio.
               </Link>
             </p>
           ) : null}
           <div className="flex gap-3">
             <button
-              className="rounded-md bg-zinc-950 px-4 py-2 text-sm font-medium text-white disabled:cursor-not-allowed disabled:bg-zinc-400"
+              className="assembler-primary-button"
               type="button"
               onClick={startCall}
               disabled={isCalling}
@@ -751,7 +751,7 @@ function DemoPageContent() {
               Start Call
             </button>
             <button
-              className="rounded-md border border-zinc-300 px-4 py-2 text-sm font-medium disabled:cursor-not-allowed disabled:text-zinc-400"
+              className="assembler-secondary-button"
               type="button"
               onClick={stopCall}
               disabled={!isCalling}
@@ -759,7 +759,7 @@ function DemoPageContent() {
               Stop Call
             </button>
           </div>
-          <p className="text-sm text-zinc-600">Status: {status}</p>
+          <p role="status" className="rounded-lg bg-[#F0F5FF] p-3 text-sm text-[#414957]">Status: {status}</p>
         </section>
 
         <section className="min-h-72 rounded-lg border border-zinc-200 bg-white p-4">
@@ -768,7 +768,7 @@ function DemoPageContent() {
           </h2>
           <div className="mt-4 flex flex-col gap-3">
             {transcript.length === 0 ? (
-              <p className="text-sm text-zinc-500">No transcript yet.</p>
+              <p className="text-sm text-zinc-500">Not tested. Start a call to see the conversation here. A working AssemblyAI connection and microphone permission are required.</p>
             ) : (
               transcript.map((entry) => (
                 <div key={entry.id} className="rounded-md bg-zinc-50 p-3">

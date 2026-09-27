@@ -665,9 +665,9 @@ export default function DashboardPage() {
                   <p className="text-sm text-[#687080]">Loading agents...</p>
                 ) : agents.length === 0 ? (
                   <div className="rounded-xl border border-dashed border-[#C8CED8] p-4">
-                    <p className="text-sm font-medium">No agents yet.</p>
+                    <p className="text-sm font-medium">{error ? "Agents unavailable." : "No agents yet."}</p>
                     <Link className="mt-3 inline-flex text-sm font-semibold text-[#0B4ED0]" href="/#create-agent">
-                      Create your first agent
+                      {error ? "Create agent" : "Create your first agent"}
                     </Link>
                   </div>
                 ) : (
@@ -705,9 +705,6 @@ export default function DashboardPage() {
               </div>
             </div>
 
-            <Link className="assembler-primary-button mt-4 hidden w-full lg:inline-flex" href="/#create-agent">
-              Create agent
-            </Link>
           </div>
         </aside>
 
@@ -755,7 +752,7 @@ export default function DashboardPage() {
           <div className="mx-auto flex max-w-[90rem] min-w-0 flex-col gap-5 px-4 py-6 sm:px-6 lg:px-8 lg:py-8">
             {error ? (
               <section className="rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-700" role="alert">
-                {error}
+                {/fetch failed|failed to fetch|network|timeout/i.test(error) ? "External service unavailable. Agent Studio could not retrieve saved data. Please try again when the connection is restored." : error}
               </section>
             ) : null}
 
@@ -763,14 +760,14 @@ export default function DashboardPage() {
               <section className="assembler-panel rounded-2xl p-8 text-center sm:p-12">
                 <span className="assembler-step-number mx-auto">01</span>
                 <h2 className="mt-4 text-xl font-semibold">
-                  {agents.length === 0 ? "No agents yet" : "Select an agent"}
+                  {isLoadingAgents ? "Loading your agents" : error ? "Unable to load Agent Studio" : agents.length === 0 ? "No agents yet" : "Select an agent"}
                 </h2>
                 <p className="mx-auto mt-2 max-w-md text-sm leading-6 text-[#687080]">
-                  {agents.length === 0
+                  {isLoadingAgents ? "Retrieving your saved agents and their configuration." : error ? "Your saved agents could not be retrieved. Refresh to try again." : agents.length === 0
                     ? "Create an agent from a business workflow to begin testing calls and capturing customer outcomes."
                     : "Choose an agent in the sidebar to open its overview, calls, leads, and configuration."}
                 </p>
-                {agents.length === 0 ? (
+                {error ? <button className="assembler-secondary-button mt-5" type="button" onClick={() => window.location.reload()}>Try again</button> : !isLoadingAgents && agents.length === 0 ? (
                   <Link className="assembler-primary-button mt-5" href="/#create-agent">
                     Create agent
                   </Link>

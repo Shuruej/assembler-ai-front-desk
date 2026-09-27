@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { AssemblerLogo } from "@/components/assembler/AssemblerLogo";
 import { FormEvent, useEffect, useMemo, useState } from "react";
 import { useParams } from "next/navigation";
 
@@ -209,21 +210,21 @@ export default function EditAgentPage() {
   }
 
   return (
-    <main className="min-h-screen bg-[#F5EFF2] px-5 py-8 text-[#1C1A1E] sm:px-6 lg:px-8">
+    <main className="min-h-screen bg-[#F7F8FA] px-5 py-8 text-[#17191D] sm:px-6 lg:px-8">
       <div className="mx-auto max-w-4xl">
         <nav className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-          <Link className="text-lg font-semibold text-[#1C1A1E]" href="/">
-            AI Front Desk
+          <Link className="text-lg font-semibold text-[#17191D]" href="/">
+            <AssemblerLogo subtitle="Agent Studio" />
           </Link>
           <div className="flex flex-wrap gap-2">
             <Link
-              className="inline-flex rounded-md px-4 py-2 text-sm font-medium text-[#655568] hover:bg-[#F5EAF0] focus:outline-none focus:ring-2 focus:ring-[#7B4764] focus:ring-offset-2"
+              className="assembler-nav-link"
               href="/dashboard"
             >
               Dashboard
             </Link>
             <Link
-              className="inline-flex rounded-md border border-[#E2D8DE] bg-white px-4 py-2 text-sm font-medium text-[#1C1A1E] hover:bg-[#F5EAF0] focus:outline-none focus:ring-2 focus:ring-[#7B4764] focus:ring-offset-2"
+              className="assembler-secondary-button"
               href="/"
             >
               Create agent
@@ -231,22 +232,21 @@ export default function EditAgentPage() {
           </div>
         </nav>
 
-        <section className="mt-10 bg-white p-6 shadow-[0_16px_45px_rgba(28,26,30,0.08)] ring-1 ring-[#E2D8DE] sm:p-8">
+        <section className="assembler-panel mt-8 p-6 sm:p-8">
           <div>
-            <p className="text-sm font-medium uppercase text-[#655568]">
+            <p className="text-sm font-medium uppercase text-[#687080]">
               Edit voice agent
             </p>
-            <h1 className="mt-3 text-3xl font-semibold text-[#1C1A1E] sm:text-4xl">
-              Update business settings and the live agent.
+            <h1 className="mt-3 text-3xl font-semibold text-[#17191D] sm:text-4xl">
+              Edit agent settings
             </h1>
-            <p className="mt-4 max-w-2xl text-base leading-7 text-[#655568]">
-              Changes save to Supabase after the live AssemblyAI agent has been
-              updated, so the phone agent and dashboard stay in sync.
+            <p className="mt-4 max-w-2xl text-base leading-7 text-[#687080]">
+              Saving updates the AssemblyAI agent and its stored business settings. An available AssemblyAI connection is required.
             </p>
           </div>
 
           {isLoading ? (
-            <div className="mt-8 rounded-md border border-[#E2D8DE] bg-[#F5EFF2] p-4 text-sm text-[#655568]">
+            <div className="mt-8 rounded-md border border-[#DDE1E8] bg-[#F0F5FF] p-4 text-sm text-[#687080]">
               Loading agent...
             </div>
           ) : (
@@ -258,7 +258,7 @@ export default function EditAgentPage() {
                   </label>
                   <input
                     id="business-name"
-                    className="rounded-md border border-[#E2D8DE] px-3 py-2 text-sm text-[#1C1A1E] outline-none focus:border-[#7B4764]"
+                    className="assembler-input"
                     required
                     type="text"
                     value={businessName}
@@ -272,8 +272,8 @@ export default function EditAgentPage() {
                   </label>
                   <input
                     id="industry"
-                    className="rounded-md border border-[#E2D8DE] px-3 py-2 text-sm text-[#1C1A1E] outline-none placeholder:text-[#655568] focus:border-[#7B4764]"
-                    placeholder="e.g. salon, dental, restaurant, general"
+                    className="assembler-input"
+                    placeholder="e.g. retail, property management, IT support"
                     type="text"
                     value={industry}
                     onChange={(event) => setIndustry(event.target.value)}
@@ -288,7 +288,7 @@ export default function EditAgentPage() {
                   </label>
                   <input
                     id="agent-name"
-                    className="rounded-md border border-[#E2D8DE] px-3 py-2 text-sm text-[#1C1A1E] outline-none placeholder:text-[#655568] focus:border-[#7B4764]"
+                    className="assembler-input"
                     required
                     type="text"
                     value={agentName}
@@ -302,7 +302,7 @@ export default function EditAgentPage() {
                   </label>
                   <select
                     id="agent-purpose"
-                    className="rounded-md border border-[#E2D8DE] bg-white px-3 py-2 text-sm text-[#1C1A1E] outline-none focus:border-[#7B4764]"
+                    className="assembler-input"
                     value={agentPurpose}
                     onChange={(event) => setAgentPurpose(event.target.value)}
                   >
@@ -325,7 +325,7 @@ export default function EditAgentPage() {
                   </label>
                   <input
                     id="business-hours-start"
-                    className="rounded-md border border-[#E2D8DE] px-3 py-2 text-sm text-[#1C1A1E] outline-none focus:border-[#7B4764]"
+                    className="assembler-input"
                     type="time"
                     value={businessHoursStart}
                     onChange={(event) => setBusinessHoursStart(event.target.value)}
@@ -341,7 +341,7 @@ export default function EditAgentPage() {
                   </label>
                   <input
                     id="business-hours-end"
-                    className="rounded-md border border-[#E2D8DE] px-3 py-2 text-sm text-[#1C1A1E] outline-none focus:border-[#7B4764]"
+                    className="assembler-input"
                     type="time"
                     value={businessHoursEnd}
                     onChange={(event) => setBusinessHoursEnd(event.target.value)}
@@ -357,7 +357,7 @@ export default function EditAgentPage() {
                   </label>
                   <input
                     id="appointment-duration"
-                    className="rounded-md border border-[#E2D8DE] px-3 py-2 text-sm text-[#1C1A1E] outline-none focus:border-[#7B4764]"
+                    className="assembler-input"
                     min={1}
                     max={480}
                     step={15}
@@ -370,17 +370,17 @@ export default function EditAgentPage() {
                 </div>
               </div>
 
-              <fieldset className="mt-4 rounded-md border border-[#E2D8DE] p-3">
+              <fieldset className="mt-4 rounded-md border border-[#DDE1E8] p-3">
                 <legend className="px-1 text-sm font-medium">Business days</legend>
                 <div className="mt-2 flex flex-wrap gap-2">
                   {BUSINESS_DAY_OPTIONS.map((day) => (
                     <label
-                      className="inline-flex items-center gap-2 rounded-md border border-[#E2D8DE] bg-white px-3 py-2 text-sm text-[#1C1A1E]"
+                      className="inline-flex items-center gap-2 rounded-md border border-[#DDE1E8] bg-white px-3 py-2 text-sm text-[#17191D]"
                       key={day.value}
                     >
                       <input
                         checked={businessDays.includes(day.value)}
-                        className="h-4 w-4 accent-[#7B4764]"
+                        className="h-4 w-4 accent-[#1769FF]"
                         type="checkbox"
                         value={day.value}
                         onChange={(event) =>
@@ -399,7 +399,7 @@ export default function EditAgentPage() {
                 </label>
                 <textarea
                   id="business-knowledge"
-                  className="min-h-40 resize-y rounded-md border border-[#E2D8DE] px-3 py-2 text-sm text-[#1C1A1E] outline-none placeholder:text-[#655568] focus:border-[#7B4764]"
+                  className="min-h-40 resize-y rounded-md border border-[#DDE1E8] px-3 py-2 text-sm text-[#17191D] outline-none placeholder:text-[#687080] focus:border-[#1769FF]"
                   placeholder="Products, services, FAQs, policies, pricing notes, support steps, or anything the agent should know."
                   value={businessKnowledge}
                   onChange={(event) => setBusinessKnowledge(event.target.value)}
@@ -419,7 +419,7 @@ export default function EditAgentPage() {
               ) : null}
 
               <button
-                className="mt-5 w-fit rounded-md bg-[#7B4764] px-5 py-3 text-sm font-semibold text-white shadow-[0_10px_24px_rgba(123,71,100,0.20)] hover:bg-[#6D3E58] focus:outline-none focus:ring-2 focus:ring-[#7B4764] focus:ring-offset-2 disabled:cursor-not-allowed disabled:bg-[#B9ADB5] disabled:shadow-none"
+                className="assembler-primary-button mt-5"
                 disabled={isSaving}
                 type="submit"
               >
