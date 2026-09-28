@@ -1,5 +1,8 @@
 import { createSupabaseServiceRoleClient } from "@/lib/supabase/server";
-import { createGoogleCalendarEvent } from "@/lib/google-calendar";
+import { createGoogleCalendarEvent, validateGoogleCalendarConfig } from "@/lib/google-calendar";
+import { appendRecordToGoogleSheet, isGoogleSheetsServiceAccountConfigured, validateGoogleSheetsConfig } from "@/lib/google-sheets";
+import { decryptSecret } from "@/lib/assembler/connections";
+import { getReviewerSessionId } from "@/lib/reviewer";
 import { logSimulatedSms } from "@/lib/sms";
 
 type BookSlotRequestBody = {
@@ -113,6 +116,99 @@ async function logBookingConfirmationSms({
   });
 }
 
+type BookingSheetsSync = "not_connected" | "synced" | "failed";
+
+async function syncBookingToGoogleSheet({
+  supabase,
+  reviewerId,
+  agentId,
+  callId,
+  lead,
+}: {
+  supabase: ReturnType<typeof createSupabaseServiceRoleClient>;
+  reviewerId: string | null;
+  agentId: string;
+  callId: string;
+  lead: {
+    booking_id?: string | null;
+    customer_name?: string | null;
+    phone_number?: string | null;
+    requested_service?: string | null;
+    confirmed_date?: string | null;
+    confirmed_time?: string | null;
+    google_event_id?: string | null;
+  };
+}): Promise<BookingSheetsSync> {
+  const lookup = reviewerId
+    ? await supabase
+        .from("reviewer_sheet_connections")
+        .select("config,status")
+        .eq("reviewer_id", reviewerId)
+        .eq("agent_id", agentId)
+        .maybeSingle()
+    : await supabase
+        .from("agent_connections")
+        .select("kind,config,encrypted_secret,status")
+        .eq("agent_id", agentId)
+        .eq("connection_key", "google_sheets")
+        .maybeSingle();
+
+  const connection = lookup.data as {
+    kind?: string;
+    config?: unknown;
+    encrypted_secret?: string | null;
+    status?: string;
+  } | null;
+
+  if (
+    !connection ||
+    connection.status !== "configured" ||
+    (!reviewerId && connection.kind !== "google_sheets") ||
+    (!reviewerId && !connection.encrypted_secret && !isGoogleSheetsServiceAccountConfigured())
+  ) {
+    return "not_connected";
+  }
+
+  try {
+    const payload: Record<string, unknown> = {
+      booking_id: lead.booking_id ?? "",
+      customer_name: lead.customer_name ?? "",
+      phone_number: lead.phone_number ?? "",
+      requested_service: lead.requested_service ?? "",
+      booking_date: lead.confirmed_date ?? "",
+      booking_time: lead.confirmed_time ?? "",
+      google_event_id: lead.google_event_id ?? "",
+    };
+    await appendRecordToGoogleSheet(
+      !reviewerId && connection.encrypted_secret
+        ? decryptSecret(connection.encrypted_secret)
+        : null,
+      validateGoogleSheetsConfig(connection.config),
+      {
+        recordType: "booking",
+        callId,
+        payload,
+        fields: [
+          { key: "booking_id", label: "Booking ID" },
+          { key: "customer_name", label: "Customer name" },
+          { key: "phone_number", label: "Phone number" },
+          { key: "requested_service", label: "Requested service" },
+          { key: "booking_date", label: "Booking date" },
+          { key: "booking_time", label: "Booking time" },
+          { key: "google_event_id", label: "Google Calendar event ID" },
+        ],
+      },
+    );
+    return "synced";
+  } catch (error) {
+    console.error(
+      "Google Sheets booking sync failed.",
+      error instanceof Error ? error.message : "Unknown sync error",
+    );
+    return "failed";
+  }
+}
+
 export async function POST(request: Request) {
   let body: BookSlotRequestBody;
 
@@ -182,12 +278,20 @@ export async function POST(request: Request) {
   }
 
   const agent = Array.isArray(call.agents) ? call.agents[0] : call.agents;
+  const reviewerId = request.headers.get("x-assembler-reviewer-id") ?? await getReviewerSessionId(request);
+  const sharedCalendarLookup = reviewerId
+    ? await supabase.from("reviewer_calendar_connections").select("config,status").eq("reviewer_id", reviewerId).eq("agent_id", call.agent_id).maybeSingle()
+    : await supabase.from("agent_connections").select("config,status").eq("agent_id", call.agent_id).eq("connection_key", "google_calendar").maybeSingle();
+  const sharedCalendar = sharedCalendarLookup.data;
+  const hasSharedCalendar = sharedCalendar?.status === "configured";
+  const hasLegacyCalendar = Boolean(agent?.google_calendar_connected && agent.google_refresh_token);
 
-  if (agent?.google_calendar_connected && agent.google_refresh_token) {
+  if (hasSharedCalendar || hasLegacyCalendar) {
     try {
+      const sharedConfig = hasSharedCalendar ? validateGoogleCalendarConfig(sharedCalendar.config) : null;
       const bookingId = generateBookingId();
       const googleEventId = await createGoogleCalendarEvent(
-        agent.google_refresh_token,
+        sharedConfig ? null : agent.google_refresh_token,
         slotDate,
         slotTime,
         normalizeAppointmentDuration(agent.appointment_duration_minutes),
@@ -196,6 +300,8 @@ export async function POST(request: Request) {
           requestedService ? `Service: ${requestedService}` : null,
           notes ? `Notes: ${notes}` : null,
         ].filter(Boolean).join("\n\n"),
+        sharedConfig?.calendarId ?? "primary",
+        sharedConfig?.timeZone ?? agent.timezone ?? "UTC",
       );
       const { data: existingLead, error: leadLookupError } = await supabase
         .from("leads")
@@ -258,8 +364,15 @@ export async function POST(request: Request) {
         agentId: call.agent_id,
         lead: leadWrite.data,
       });
+      const googleSheetsSync = await syncBookingToGoogleSheet({
+        supabase,
+        reviewerId,
+        agentId: call.agent_id,
+        callId,
+        lead: leadWrite.data,
+      });
 
-      return Response.json(leadWrite.data);
+      return Response.json({ ...leadWrite.data, google_sheets_sync: googleSheetsSync });
     } catch (error) {
       return Response.json(
         {
@@ -306,12 +419,20 @@ export async function POST(request: Request) {
     return Response.json({ error: error.message }, { status: 500 });
   }
 
+  let googleSheetsSync: BookingSheetsSync = "not_connected";
   if (call.agent_id) {
     await logBookingConfirmationSms({
       agentId: call.agent_id,
       lead,
     });
+    googleSheetsSync = await syncBookingToGoogleSheet({
+      supabase,
+      reviewerId,
+      agentId: call.agent_id,
+      callId,
+      lead,
+    });
   }
 
-  return Response.json(lead);
+  return Response.json({ ...lead, google_sheets_sync: googleSheetsSync });
 }

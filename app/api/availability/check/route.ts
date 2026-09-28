@@ -1,5 +1,6 @@
 import { createSupabaseServiceRoleClient } from "@/lib/supabase/server";
-import { checkGoogleCalendarAvailability } from "@/lib/google-calendar";
+import { checkGoogleCalendarAvailability, validateGoogleCalendarConfig } from "@/lib/google-calendar";
+import { getReviewerSessionId } from "@/lib/reviewer";
 
 type CheckAvailabilityRequestBody = {
   call_id?: unknown;
@@ -82,6 +83,29 @@ export async function POST(request: Request) {
   }
 
   const agent = Array.isArray(call.agents) ? call.agents[0] : call.agents;
+  const reviewerId = request.headers.get("x-assembler-reviewer-id") ?? await getReviewerSessionId(request);
+  const sharedCalendarLookup = reviewerId
+    ? await supabase.from("reviewer_calendar_connections").select("config,status").eq("reviewer_id", reviewerId).eq("agent_id", call.agent_id).maybeSingle()
+    : await supabase.from("agent_connections").select("config,status").eq("agent_id", call.agent_id).eq("connection_key", "google_calendar").maybeSingle();
+  const sharedCalendar = sharedCalendarLookup.data;
+
+  if (sharedCalendar?.status === "configured") {
+    try {
+      const config = validateGoogleCalendarConfig(sharedCalendar.config);
+      const availableTimes = await checkGoogleCalendarAvailability(
+        null,
+        requestedDate,
+        agent?.business_hours_start ?? "09:00",
+        agent?.business_hours_end ?? "18:00",
+        normalizeAppointmentDuration(agent?.appointment_duration_minutes),
+        config.calendarId,
+        config.timeZone,
+      );
+      return Response.json({ available_times: availableTimes, source: "google_calendar_shared" });
+    } catch (error) {
+      return Response.json({ error: error instanceof Error ? error.message : "Shared Google Calendar availability check failed." }, { status: 502 });
+    }
+  }
 
   if (agent?.google_calendar_connected && agent.google_refresh_token) {
     try {
@@ -91,6 +115,8 @@ export async function POST(request: Request) {
         agent.business_hours_start ?? "09:00",
         agent.business_hours_end ?? "18:00",
         normalizeAppointmentDuration(agent.appointment_duration_minutes),
+        "primary",
+        agent.timezone ?? "UTC",
       );
 
       return Response.json({

@@ -7,9 +7,12 @@ import { appendRecordToGoogleSheet, isGoogleSheetsServiceAccountConfigured, vali
 import { POST as checkAvailability } from "@/app/api/availability/check/route";
 import { POST as bookSlot } from "@/app/api/availability/book/route";
 import { POST as escalateLead } from "@/app/api/leads/escalate/route";
+import { getReviewerSessionId } from "@/lib/reviewer";
 
-async function invokeExistingRoute(handler: (request: Request) => Promise<Response>, payload: Record<string, unknown>): Promise<ToolResult> {
-  const response = await handler(new Request("http://localhost/internal-tool", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(payload) }));
+async function invokeExistingRoute(handler: (request: Request) => Promise<Response>, payload: Record<string, unknown>, reviewerId: string | null = null): Promise<ToolResult> {
+  const headers: Record<string, string> = { "content-type": "application/json" };
+  if (reviewerId) headers["x-assembler-reviewer-id"] = reviewerId;
+  const response = await handler(new Request("http://localhost/internal-tool", { method: "POST", headers, body: JSON.stringify(payload) }));
   const data = await response.json();
   return response.ok ? { success: true, data } : { success: false, code: "action_failed", error: typeof data?.error === "string" ? data.error : "The action could not be completed." };
 }
@@ -19,6 +22,7 @@ export async function POST(request: Request) {
   try { body = await request.json(); }
   catch { return Response.json({ success: false, error: "Invalid JSON request." }, { status: 400 }); }
   if (!body || typeof body.call_id !== "string" || typeof body.tool_id !== "string") return Response.json({ success: false, error: "call_id and tool_id are required." }, { status: 400 });
+  const reviewerId = await getReviewerSessionId(request);
   const supabase = createSupabaseServiceRoleClient();
   const { data: call } = await supabase.from("calls").select("id,agent_id,status").eq("id", body.call_id).single();
   if (!call) return Response.json({ success: false, error: "Call not found." }, { status: 404 });
@@ -38,10 +42,13 @@ export async function POST(request: Request) {
       const { data, error } = await supabase.from("agent_records").insert({ agent_id: agentId, call_id: call.id, record_type: definition.id, payload, status: "new" }).select("id,record_type,status,payload").single();
       if (error) throw new Error("Record could not be saved.");
       let googleSheetsSync: "not_connected" | "synced" | "failed" = "not_connected";
-      const { data: sheetsConnection } = await supabase.from("agent_connections").select("kind,config,encrypted_secret,status").eq("agent_id", agentId).eq("connection_key", "google_sheets").maybeSingle();
-      if (sheetsConnection?.kind === "google_sheets" && sheetsConnection.status === "configured" && (sheetsConnection.encrypted_secret || isGoogleSheetsServiceAccountConfigured())) {
+      const sheetsLookup = reviewerId
+        ? await supabase.from("reviewer_sheet_connections").select("config,status").eq("reviewer_id", reviewerId).eq("agent_id", agentId).maybeSingle()
+        : await supabase.from("agent_connections").select("kind,config,encrypted_secret,status").eq("agent_id", agentId).eq("connection_key", "google_sheets").maybeSingle();
+      const sheetsConnection = sheetsLookup.data as { kind?: string; config?: unknown; encrypted_secret?: string | null; status?: string } | null;
+      if (sheetsConnection?.status === "configured" && (reviewerId || sheetsConnection.kind === "google_sheets") && (reviewerId || sheetsConnection.encrypted_secret || isGoogleSheetsServiceAccountConfigured())) {
         try {
-          await appendRecordToGoogleSheet(sheetsConnection.encrypted_secret ? decryptSecret(sheetsConnection.encrypted_secret) : null, validateGoogleSheetsConfig(sheetsConnection.config), {
+          await appendRecordToGoogleSheet(!reviewerId && sheetsConnection.encrypted_secret ? decryptSecret(sheetsConnection.encrypted_secret) : null, validateGoogleSheetsConfig(sheetsConnection.config), {
             recordType: definition.id,
             callId: call.id,
             payload,
@@ -55,10 +62,10 @@ export async function POST(request: Request) {
       }
       return { success: true, data: { ...data, google_sheets_sync: googleSheetsSync } };
     },
-    escalation: async (_definition, values) => invokeExistingRoute(escalateLead, { call_id: call.id, reason: values.reason, customer_name: values.customer_name, phone_number: values.phone_number, notes: values.notes }),
+    escalation: async (_definition, values) => invokeExistingRoute(escalateLead, { call_id: call.id, reason: values.reason, customer_name: values.customer_name, phone_number: values.phone_number, notes: values.notes }, reviewerId),
     calendar: async (definition, values) => definition.operation === "check_availability"
-      ? invokeExistingRoute(checkAvailability, { call_id: call.id, requested_date: values.requested_date })
-      : invokeExistingRoute(bookSlot, { call_id: call.id, slot_date: values.slot_date, slot_time: values.slot_time, customer_name: values.customer_name, phone_number: values.phone_number, requested_service: values.requested_service, notes: values.notes }),
+      ? invokeExistingRoute(checkAvailability, { call_id: call.id, requested_date: values.requested_date }, reviewerId)
+      : invokeExistingRoute(bookSlot, { call_id: call.id, slot_date: values.slot_date, slot_time: values.slot_time, customer_name: values.customer_name, phone_number: values.phone_number, requested_service: values.requested_service, notes: values.notes }, reviewerId),
     http: async (definition, values) => runConnection(definition.connectionId!, "http", values),
     webhook: async (definition, values) => runConnection(definition.connectionId!, "webhook", values),
   };

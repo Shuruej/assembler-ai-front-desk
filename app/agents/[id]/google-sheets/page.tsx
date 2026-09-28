@@ -7,6 +7,9 @@ import { AssemblerLogo } from "@/components/assembler/AssemblerLogo";
 
 type ConnectionState = {
   authorized: boolean;
+  auth_mode?: "service_account" | "oauth" | "none";
+  service_account_email?: string | null;
+  oauth_available?: boolean;
   status: string;
   config: {
     spreadsheetId: string;
@@ -110,7 +113,14 @@ export default function GoogleSheetsSetupPage() {
     setMessage(null);
     try {
       await json<{ disconnected: boolean }>(`/api/agents/${id}/google-sheets`, { method: "DELETE" });
-      setConnection({ authorized: false, status: "not_connected", config: null });
+      setConnection((current) => ({
+        authorized: current?.auth_mode === "service_account",
+        auth_mode: current?.auth_mode ?? "none",
+        service_account_email: current?.service_account_email ?? null,
+        oauth_available: current?.oauth_available ?? false,
+        status: "not_connected",
+        config: null,
+      }));
       setMetadata(null);
       setSpreadsheet("");
       setSheetName("");
@@ -126,6 +136,7 @@ export default function GoogleSheetsSetupPage() {
   const spreadsheetUrl = configured
     ? `https://docs.google.com/spreadsheets/d/${configured.spreadsheetId}/edit`
     : null;
+  const serviceMode = connection?.auth_mode === "service_account";
 
   return (
     <main className="min-h-screen bg-[#F6F8FC] text-[#17191D]">
@@ -150,6 +161,8 @@ export default function GoogleSheetsSetupPage() {
 
         {!connection ? (
           <section className="assembler-panel mt-6 rounded-2xl p-6"><p className="text-sm text-[#687080]">Loading connection...</p></section>
+        ) : !connection.authorized && !connection.oauth_available ? (
+          <section className="assembler-panel mt-6 rounded-2xl p-6"><p className="text-xs font-semibold uppercase tracking-[0.12em] text-[#1769FF]">Public preview</p><h2 className="mt-2 text-xl font-semibold">Google Sheets sharing is not enabled yet</h2><p className="mt-2 max-w-2xl text-sm leading-6 text-[#687080]">This build keeps public testers inside Assembler instead of sending them into a restricted Google sign-in flow.</p></section>
         ) : !connection.authorized ? (
           <section className="assembler-panel mt-6 rounded-2xl p-6">
             <div className="flex flex-col gap-5 sm:flex-row sm:items-center sm:justify-between">
@@ -162,6 +175,7 @@ export default function GoogleSheetsSetupPage() {
           </section>
         ) : (
           <div className="mt-6 space-y-5">
+            {serviceMode && connection.service_account_email ? <section className="rounded-2xl border border-[#CFE0FF] bg-[#F3F7FF] p-5"><p className="text-xs font-semibold uppercase tracking-[0.12em] text-[#1769FF]">No Google sign-in required</p><h2 className="mt-2 text-lg font-semibold">Share your Sheet with Assembler</h2><p className="mt-2 text-sm leading-6 text-[#687080]">In Google Sheets, press Share, add this email as Editor, then paste the Sheet URL below.</p><div className="mt-3 break-all rounded-lg border border-[#D7E3FA] bg-white px-3 py-2 font-mono text-sm text-[#282C34]">{connection.service_account_email}</div></section> : null}
             {configured ? (
               <section className="rounded-2xl border border-emerald-200 bg-emerald-50/70 p-5">
                 <div className="flex flex-wrap items-start justify-between gap-4">
@@ -172,24 +186,24 @@ export default function GoogleSheetsSetupPage() {
                   </div>
                   <div className="flex flex-wrap gap-2">
                     {spreadsheetUrl ? <a className="assembler-secondary-button" href={spreadsheetUrl} target="_blank" rel="noreferrer">Open Sheet</a> : null}
-                    <a className="assembler-secondary-button" href={`/api/agents/${id}/google-sheets/connect`}>Reconnect Google</a>
+                    {!serviceMode ? <a className="assembler-secondary-button" href={`/api/agents/${id}/google-sheets/connect`}>Reconnect Google</a> : null}
                     <button className="assembler-secondary-button" disabled={busy} onClick={() => void disconnect()} type="button">Disconnect</button>
                   </div>
                 </div>
               </section>
             ) : (
               <section className="rounded-2xl border border-[#CFE0FF] bg-[#F3F7FF] p-5">
-                <p className="text-sm font-semibold text-[#1769FF]">Google account authorized ✓</p>
-                <p className="mt-1 text-sm text-[#687080]">Now choose an existing spreadsheet or let Assembler create one for you.</p>
+                <p className="text-sm font-semibold text-[#1769FF]">{serviceMode ? "Shared-Sheet connector ready ✓" : "Google account authorized ✓"}</p>
+                <p className="mt-1 text-sm text-[#687080]">{serviceMode ? "Share a Sheet with the service email above, then connect it here." : "Now choose an existing spreadsheet or let Assembler create one for you."}</p>
               </section>
             )}
 
             <section className="assembler-panel rounded-2xl p-6">
-              <div className="flex gap-2 rounded-xl bg-[#F1F4F8] p-1">
+              {!serviceMode ? <div className="flex gap-2 rounded-xl bg-[#F1F4F8] p-1">
                 <button className={`flex-1 rounded-lg px-4 py-2 text-sm font-semibold ${mode === "existing" ? "bg-white text-[#1769FF] shadow-sm" : "text-[#687080]"}`} onClick={() => setMode("existing")} type="button">Connect existing</button>
                 <button className={`flex-1 rounded-lg px-4 py-2 text-sm font-semibold ${mode === "create" ? "bg-white text-[#1769FF] shadow-sm" : "text-[#687080]"}`} onClick={() => setMode("create")} type="button">Create new</button>
-              </div>
-              {mode === "existing" ? (
+              </div> : null}
+              {serviceMode || mode === "existing" ? (
                 <div className="mt-6 space-y-4">
                   <label className="assembler-field">
                     <span>Google Sheets URL or spreadsheet ID</span>

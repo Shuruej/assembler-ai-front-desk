@@ -1,3 +1,5 @@
+import { getGoogleServiceAccountAccessToken, getGoogleServiceAccountEmail, isGoogleServiceAccountConfigured } from "./google-service-account";
+
 type GoogleTokenResponse = {
   access_token?: string;
   refresh_token?: string;
@@ -7,14 +9,13 @@ type GoogleTokenResponse = {
 };
 
 type GoogleFreeBusyResponse = {
-  calendars?: {
-    primary?: {
-      busy?: {
-        start: string;
-        end: string;
-      }[];
-    };
-  };
+  calendars?: Record<string, {
+    busy?: {
+      start: string;
+      end: string;
+    }[];
+    errors?: Array<{ reason?: string; message?: string }>;
+  }>;
   error?: {
     message?: string;
   };
@@ -27,12 +28,25 @@ type GoogleEventResponse = {
   };
 };
 
+type GoogleCalendarMetadataResponse = {
+  id?: string;
+  summary?: string;
+  timeZone?: string;
+  error?: { message?: string };
+};
+
+export type GoogleCalendarConfig = {
+  calendarId: string;
+  calendarTitle: string;
+  timeZone: string;
+};
+
 const GOOGLE_OAUTH_URL = "https://accounts.google.com/o/oauth2/v2/auth";
 const GOOGLE_TOKEN_URL = "https://oauth2.googleapis.com/token";
 const GOOGLE_FREE_BUSY_URL =
   "https://www.googleapis.com/calendar/v3/freeBusy";
-const GOOGLE_EVENTS_URL =
-  "https://www.googleapis.com/calendar/v3/calendars/primary/events";
+const GOOGLE_CALENDAR_API =
+  "https://www.googleapis.com/calendar/v3/calendars";
 const GOOGLE_CALENDAR_SCOPE = "https://www.googleapis.com/auth/calendar";
 const GOOGLE_SHEETS_SCOPE = "https://www.googleapis.com/auth/spreadsheets";
 
@@ -82,8 +96,36 @@ function formatTimeFromMinutes(totalMinutes: number): string {
   return `${String(hour).padStart(2, "0")}:${String(minute).padStart(2, "0")}`;
 }
 
-function toUtcIso(dateISO: string, timeString: string): string {
-  return `${dateISO}T${timeString}:00Z`;
+function toUtcIso(dateISO: string, timeString: string, timeZone = "UTC"): string {
+  const [year, month, day] = dateISO.split("-").map(Number);
+  const [hour, minute] = timeString.split(":").map(Number);
+  const targetLocal = Date.UTC(year, month - 1, day, hour, minute, 0);
+  let guess = targetLocal;
+
+  for (let index = 0; index < 2; index += 1) {
+    const parts = new Intl.DateTimeFormat("en-CA", {
+      timeZone,
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+      hour: "2-digit",
+      minute: "2-digit",
+      second: "2-digit",
+      hourCycle: "h23",
+    }).formatToParts(new Date(guess));
+    const values = Object.fromEntries(parts.map((part) => [part.type, part.value]));
+    const localAtGuess = Date.UTC(
+      Number(values.year),
+      Number(values.month) - 1,
+      Number(values.day),
+      Number(values.hour),
+      Number(values.minute),
+      Number(values.second),
+    );
+    guess = targetLocal - (localAtGuess - guess);
+  }
+
+  return new Date(guess).toISOString();
 }
 
 async function parseGoogleResponse<T>(response: Response): Promise<T> {
@@ -94,7 +136,7 @@ async function parseGoogleResponse<T>(response: Response): Promise<T> {
   return JSON.parse(text) as T;
 }
 
-function getGoogleErrorMessage(data: GoogleTokenResponse | GoogleFreeBusyResponse | GoogleEventResponse): string | null {
+function getGoogleErrorMessage(data: GoogleTokenResponse | GoogleFreeBusyResponse | GoogleEventResponse | GoogleCalendarMetadataResponse): string | null {
   if ("error_description" in data && data.error_description) {
     return data.error_description;
   }
@@ -189,22 +231,94 @@ export async function getAccessTokenFromRefreshToken(
   }
 }
 
+export function getGoogleCalendarServiceAccountEmail(): string | null {
+  return getGoogleServiceAccountEmail();
+}
+
+export function isGoogleCalendarServiceAccountConfigured(): boolean {
+  return isGoogleServiceAccountConfigured();
+}
+
+async function getCalendarAccessToken(refreshToken: string | null): Promise<string> {
+  return refreshToken
+    ? getAccessTokenFromRefreshToken(refreshToken)
+    : getGoogleServiceAccountAccessToken([GOOGLE_CALENDAR_SCOPE]);
+}
+
+export function validateGoogleCalendarConfig(value: unknown): GoogleCalendarConfig {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    throw new Error("Invalid Google Calendar configuration.");
+  }
+  const config = value as Record<string, unknown>;
+  if (
+    typeof config.calendarId !== "string" ||
+    typeof config.calendarTitle !== "string" ||
+    typeof config.timeZone !== "string"
+  ) {
+    throw new Error("Google Calendar setup is incomplete.");
+  }
+  const calendarId = config.calendarId.trim();
+  const calendarTitle = config.calendarTitle.trim();
+  const timeZone = config.timeZone.trim();
+  if (!calendarId || !calendarTitle || !timeZone) {
+    throw new Error("Google Calendar setup is incomplete.");
+  }
+  try {
+    new Intl.DateTimeFormat("en-US", { timeZone }).format(new Date());
+  } catch {
+    throw new Error("Google Calendar returned an invalid timezone.");
+  }
+  return { calendarId, calendarTitle, timeZone };
+}
+
+export async function getGoogleCalendarMetadata(
+  refreshToken: string | null,
+  calendarIdValue: string,
+): Promise<GoogleCalendarConfig> {
+  const calendarId = calendarIdValue.trim();
+  if (!calendarId || calendarId.length > 320) {
+    throw new Error("Enter a valid Google Calendar ID.");
+  }
+  const accessToken = await getCalendarAccessToken(refreshToken);
+  const response = await fetch(
+    `${GOOGLE_CALENDAR_API}/${encodeURIComponent(calendarId)}`,
+    {
+      headers: { Authorization: `Bearer ${accessToken}` },
+      signal: AbortSignal.timeout(10000),
+    },
+  );
+  const data = await parseGoogleResponse<GoogleCalendarMetadataResponse>(response);
+  if (!response.ok || !data.id) {
+    throw new Error(
+      getGoogleErrorMessage(data) ??
+        "Could not open that Google Calendar. Share it with the Assembler service account first.",
+    );
+  }
+  return {
+    calendarId: data.id,
+    calendarTitle: data.summary?.trim() || data.id,
+    timeZone: data.timeZone?.trim() || "UTC",
+  };
+}
+
 export async function checkGoogleCalendarAvailability(
-  refreshToken: string,
+  refreshToken: string | null,
   dateISO: string,
   businessHoursStart: string,
   businessHoursEnd: string,
   durationMinutes: number,
+  calendarId = "primary",
+  timeZone = "UTC",
 ): Promise<string[]> {
   try {
-    const accessToken = await getAccessTokenFromRefreshToken(refreshToken);
+    const accessToken = await getCalendarAccessToken(refreshToken);
     const { startHour, endHour } = normalizeBusinessHours(
       businessHoursStart,
       businessHoursEnd,
     );
     const normalizedDurationMinutes = normalizeDurationMinutes(durationMinutes);
-    const timeMin = toUtcIso(dateISO, formatTime(startHour));
-    const timeMax = toUtcIso(dateISO, formatTime(endHour));
+    const timeMin = toUtcIso(dateISO, formatTime(startHour), timeZone);
+    const timeMax = toUtcIso(dateISO, formatTime(endHour), timeZone);
     const response = await fetch(GOOGLE_FREE_BUSY_URL, {
       method: "POST",
       headers: {
@@ -214,7 +328,7 @@ export async function checkGoogleCalendarAvailability(
       body: JSON.stringify({
         timeMin,
         timeMax,
-        items: [{ id: "primary" }],
+        items: [{ id: calendarId }],
       }),
     });
     const data = await parseGoogleResponse<GoogleFreeBusyResponse>(response);
@@ -223,7 +337,11 @@ export async function checkGoogleCalendarAvailability(
       throw new Error(getGoogleErrorMessage(data) ?? response.statusText);
     }
 
-    const busyPeriods = data.calendars?.primary?.busy ?? [];
+    const calendarResult = data.calendars?.[calendarId];
+    if (calendarResult?.errors?.length) {
+      throw new Error(calendarResult.errors[0]?.message ?? "Google Calendar access failed.");
+    }
+    const busyPeriods = calendarResult?.busy ?? [];
     const startMinutes = startHour * 60;
     const endMinutes = endHour * 60;
     const candidateSlots = [];
@@ -235,9 +353,9 @@ export async function checkGoogleCalendarAvailability(
     ) {
       const slotStart = formatTimeFromMinutes(minutes);
       candidateSlots.push({
-        start: new Date(toUtcIso(dateISO, slotStart)),
+        start: new Date(toUtcIso(dateISO, slotStart, timeZone)),
         end: new Date(
-          toUtcIso(dateISO, formatTimeFromMinutes(minutes + normalizedDurationMinutes)),
+          toUtcIso(dateISO, formatTimeFromMinutes(minutes + normalizedDurationMinutes), timeZone),
         ),
         time: slotStart,
       });
@@ -263,19 +381,21 @@ export async function checkGoogleCalendarAvailability(
 }
 
 export async function createGoogleCalendarEvent(
-  refreshToken: string,
+  refreshToken: string | null,
   dateISO: string,
   timeString: string,
   durationMinutes: number,
   summary: string,
   description: string,
+  calendarId = "primary",
+  timeZone = "UTC",
 ): Promise<string> {
   try {
-    const accessToken = await getAccessTokenFromRefreshToken(refreshToken);
-    const start = new Date(toUtcIso(dateISO, timeString));
+    const accessToken = await getCalendarAccessToken(refreshToken);
+    const start = new Date(toUtcIso(dateISO, timeString, timeZone));
     const end = new Date(start);
     end.setUTCMinutes(start.getUTCMinutes() + normalizeDurationMinutes(durationMinutes));
-    const response = await fetch(GOOGLE_EVENTS_URL, {
+    const response = await fetch(`${GOOGLE_CALENDAR_API}/${encodeURIComponent(calendarId)}/events`, {
       method: "POST",
       headers: {
         Authorization: `Bearer ${accessToken}`,

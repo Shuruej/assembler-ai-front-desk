@@ -19,8 +19,8 @@ function load(fetchImpl = async () => ({ ok: true, text: async () => '{}' })) {
       if (name === './google-calendar') {
         return { getAccessTokenFromRefreshToken: async () => 'access-token' };
       }
-      if (name === 'google-auth-library') {
-        return { GoogleAuth: class { async getClient() { return { getAccessToken: async () => ({ token: 'service-token' }) }; } } };
+      if (name === './google-service-account') {
+        return { getGoogleServiceAccountAccessToken: async () => 'service-token', getGoogleServiceAccountEmail: () => 'assembler@example.iam.gserviceaccount.com', isGoogleServiceAccountConfigured: () => true };
       }
       throw new Error(`Unexpected import: ${name}`);
     },

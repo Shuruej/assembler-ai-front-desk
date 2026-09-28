@@ -1,5 +1,5 @@
-import { GoogleAuth } from "google-auth-library";
 import { getAccessTokenFromRefreshToken } from "./google-calendar";
+import { getGoogleServiceAccountAccessToken, getGoogleServiceAccountEmail, isGoogleServiceAccountConfigured } from "./google-service-account";
 
 export type GoogleSheetsConfig = {
   spreadsheetId: string;
@@ -23,35 +23,15 @@ const GOOGLE_SHEETS_API = "https://sheets.googleapis.com/v4/spreadsheets";
 const GOOGLE_SHEETS_SCOPE = "https://www.googleapis.com/auth/spreadsheets";
 
 export function getGoogleSheetsServiceAccountEmail(): string | null {
-  const value = process.env.GOOGLE_SHEETS_SERVICE_ACCOUNT_EMAIL?.trim();
-  return value || null;
+  return getGoogleServiceAccountEmail();
 }
 
 export function isGoogleSheetsServiceAccountConfigured(): boolean {
-  return Boolean(
-    getGoogleSheetsServiceAccountEmail() &&
-      process.env.GOOGLE_SHEETS_SERVICE_ACCOUNT_PRIVATE_KEY?.trim(),
-  );
+  return isGoogleServiceAccountConfigured();
 }
 
 async function getServiceAccountAccessToken(): Promise<string> {
-  const clientEmail = getGoogleSheetsServiceAccountEmail();
-  const encodedKey = process.env.GOOGLE_SHEETS_SERVICE_ACCOUNT_PRIVATE_KEY;
-  if (!clientEmail || !encodedKey) {
-    throw new Error("Google Sheets service account is not configured.");
-  }
-
-  const auth = new GoogleAuth({
-    credentials: {
-      client_email: clientEmail,
-      private_key: encodedKey.replace(/\\n/g, "\n"),
-    },
-    scopes: [GOOGLE_SHEETS_SCOPE],
-  });
-  const client = await auth.getClient();
-  const token = await client.getAccessToken();
-  if (!token.token) throw new Error("Google service account did not return an access token.");
-  return token.token;
+  return getGoogleServiceAccountAccessToken([GOOGLE_SHEETS_SCOPE]);
 }
 
 export function parseGoogleSpreadsheetId(value: string): string {
@@ -164,7 +144,7 @@ export async function appendRecordToGoogleSheet(
     fields: Array<{ key: string; label: string }>;
   },
 ): Promise<void> {
-  const headers = ["Captured at", "Record type", "Call ID", ...record.fields.map((field) => field.label)];
+  const targetHeaders = ["Captured at", "Record type", "Call ID", ...record.fields.map((field) => field.label)];
   const firstRowRange = encodeURIComponent(a1(config.sheetName, "1:1"));
   const valuesBase = `${GOOGLE_SHEETS_API}/${encodeURIComponent(config.spreadsheetId)}/values`;
 
@@ -173,22 +153,30 @@ export async function appendRecordToGoogleSheet(
   if (!firstRowResponse.ok) throw googleError(firstRowData, "Could not read the configured sheet tab.");
 
   const existingHeaders = firstRowData.values?.[0]?.map((value) => String(value)) ?? [];
-  if (existingHeaders.length === 0) {
+  const missingHeaders = targetHeaders.filter((header) => !existingHeaders.includes(header));
+  const effectiveHeaders =
+    existingHeaders.length === 0
+      ? targetHeaders
+      : [...existingHeaders, ...missingHeaders];
+
+  if (existingHeaders.length === 0 || missingHeaders.length > 0) {
     const headerResponse = await googleFetch(refreshToken, `${valuesBase}/${firstRowRange}?valueInputOption=RAW`, {
       method: "PUT",
-      body: JSON.stringify({ values: [headers] }),
+      body: JSON.stringify({ values: [effectiveHeaders] }),
     });
     const headerData = await parseJson<ValuesResponse>(headerResponse);
-    if (!headerResponse.ok) throw googleError(headerData, "Could not create Google Sheets headers.");
-  } else if (headers.some((header, index) => existingHeaders[index] !== header)) {
-    throw new Error("The configured tab already has different columns. Use an empty tab for Assembler records.");
+    if (!headerResponse.ok) throw googleError(headerData, "Could not update Google Sheets headers.");
   }
-  const row = [
-    new Date().toISOString(),
-    record.recordType,
-    record.callId ?? "",
-    ...record.fields.map((field) => record.payload[field.key] ?? ""),
-  ];
+
+  const valuesByHeader = new Map<string, unknown>([
+    ["Captured at", new Date().toISOString()],
+    ["Record type", record.recordType],
+    ["Call ID", record.callId ?? ""],
+  ]);
+  for (const field of record.fields) {
+    valuesByHeader.set(field.label, record.payload[field.key] ?? "");
+  }
+  const row = effectiveHeaders.map((header) => valuesByHeader.get(header) ?? "");
   const appendRange = encodeURIComponent(a1(config.sheetName, "A:ZZ"));
   const appendResponse = await googleFetch(
     refreshToken,
