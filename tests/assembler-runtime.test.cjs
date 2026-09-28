@@ -125,6 +125,7 @@ test('tool execution logs only approved tool and argument names', async () => {
     '@/lib/assembler/connections': connections,
     '@/lib/assembler/registry': { dispatchBlueprintTool: async () => ({ success: false, code: 'invalid_arguments', error: 'Invalid' }) },
     '@/lib/assembler/records': records,
+    '@/lib/google-sheets': { appendRecordToGoogleSheet: async () => {}, validateGoogleSheetsConfig: value => value },
     '@/app/api/availability/check/route': { POST: async () => {} },
     '@/app/api/availability/book/route': { POST: async () => {} },
     '@/app/api/leads/escalate/route': { POST: async () => {} },

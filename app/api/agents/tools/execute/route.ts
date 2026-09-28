@@ -3,6 +3,7 @@ import { validateAgentBlueprint } from "@/lib/assembler/blueprint";
 import { decryptSecret, executeOutbound, validateOutboundConfig } from "@/lib/assembler/connections";
 import { dispatchBlueprintTool, type ToolExecutors, type ToolResult } from "@/lib/assembler/registry";
 import { validateRecordPayload } from "@/lib/assembler/records";
+import { appendRecordToGoogleSheet, validateGoogleSheetsConfig } from "@/lib/google-sheets";
 import { POST as checkAvailability } from "@/app/api/availability/check/route";
 import { POST as bookSlot } from "@/app/api/availability/book/route";
 import { POST as escalateLead } from "@/app/api/leads/escalate/route";
@@ -36,7 +37,23 @@ export async function POST(request: Request) {
       const payload = validateRecordPayload(blueprint, values, false);
       const { data, error } = await supabase.from("agent_records").insert({ agent_id: agentId, call_id: call.id, record_type: definition.id, payload, status: "new" }).select("id,record_type,status,payload").single();
       if (error) throw new Error("Record could not be saved.");
-      return { success: true, data };
+      let googleSheetsSync: "not_connected" | "synced" | "failed" = "not_connected";
+      const { data: sheetsConnection } = await supabase.from("agent_connections").select("kind,config,encrypted_secret,status").eq("agent_id", agentId).eq("connection_key", "google_sheets").maybeSingle();
+      if (sheetsConnection?.kind === "google_sheets" && sheetsConnection.status === "configured" && sheetsConnection.encrypted_secret) {
+        try {
+          await appendRecordToGoogleSheet(decryptSecret(sheetsConnection.encrypted_secret), validateGoogleSheetsConfig(sheetsConnection.config), {
+            recordType: definition.id,
+            callId: call.id,
+            payload,
+            fields: blueprint.dataFields.map((field) => ({ key: field.key, label: field.label })),
+          });
+          googleSheetsSync = "synced";
+        } catch (syncError) {
+          googleSheetsSync = "failed";
+          console.error("Google Sheets sync failed.", syncError instanceof Error ? syncError.message : "Unknown sync error");
+        }
+      }
+      return { success: true, data: { ...data, google_sheets_sync: googleSheetsSync } };
     },
     escalation: async (_definition, values) => invokeExistingRoute(escalateLead, { call_id: call.id, reason: values.reason, customer_name: values.customer_name, phone_number: values.phone_number, notes: values.notes }),
     calendar: async (definition, values) => definition.operation === "check_availability"

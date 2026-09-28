@@ -34,12 +34,15 @@ const GOOGLE_FREE_BUSY_URL =
 const GOOGLE_EVENTS_URL =
   "https://www.googleapis.com/calendar/v3/calendars/primary/events";
 const GOOGLE_CALENDAR_SCOPE = "https://www.googleapis.com/auth/calendar";
+const GOOGLE_SHEETS_SCOPE = "https://www.googleapis.com/auth/spreadsheets";
+
+export type GoogleIntegration = "calendar" | "sheets";
 
 function requireGoogleEnv(name: string): string {
   const value = process.env[name];
 
   if (!value) {
-    throw new Error(`${name} is required for Google Calendar integration.`);
+    throw new Error(`${name} is required for Google integrations.`);
   }
 
   return value;
@@ -103,17 +106,26 @@ function getGoogleErrorMessage(data: GoogleTokenResponse | GoogleFreeBusyRespons
   return data.error?.message ?? null;
 }
 
-export function getGoogleOAuthUrl(agentId: string): string {
+export function getGoogleOAuthUrl(agentId: string, integration: GoogleIntegration = "calendar"): string {
   const url = new URL(GOOGLE_OAUTH_URL);
   url.searchParams.set("client_id", requireGoogleEnv("GOOGLE_CLIENT_ID"));
   url.searchParams.set("redirect_uri", requireGoogleEnv("GOOGLE_REDIRECT_URI"));
   url.searchParams.set("response_type", "code");
-  url.searchParams.set("scope", GOOGLE_CALENDAR_SCOPE);
+  url.searchParams.set("scope", integration === "sheets" ? GOOGLE_SHEETS_SCOPE : GOOGLE_CALENDAR_SCOPE);
   url.searchParams.set("access_type", "offline");
   url.searchParams.set("prompt", "consent");
-  url.searchParams.set("state", agentId);
+  url.searchParams.set("state", `${integration}:${agentId}`);
 
   return url.toString();
+}
+
+export function parseGoogleOAuthState(value: string): { agentId: string; integration: GoogleIntegration } {
+  const separator = value.indexOf(":");
+  if (separator === -1) return { agentId: value, integration: "calendar" };
+  const integration = value.slice(0, separator);
+  const agentId = value.slice(separator + 1);
+  if ((integration !== "calendar" && integration !== "sheets") || !agentId) throw new Error("Invalid Google OAuth state.");
+  return { agentId, integration };
 }
 
 export async function exchangeCodeForTokens(code: string): Promise<GoogleTokenResponse> {
@@ -138,7 +150,7 @@ export async function exchangeCodeForTokens(code: string): Promise<GoogleTokenRe
     return data;
   } catch (error) {
     throw new Error(
-      `Google Calendar request failed: ${
+      `Google request failed: ${
         error instanceof Error ? error.message : "token exchange failed"
       }`,
     );
@@ -170,7 +182,7 @@ export async function getAccessTokenFromRefreshToken(
     return data.access_token;
   } catch (error) {
     throw new Error(
-      `Google Calendar request failed: ${
+      `Google request failed: ${
         error instanceof Error ? error.message : "refresh token exchange failed"
       }`,
     );
@@ -243,7 +255,7 @@ export async function checkGoogleCalendarAvailability(
       .map((slot) => slot.time);
   } catch (error) {
     throw new Error(
-      `Google Calendar request failed: ${
+      `Google request failed: ${
         error instanceof Error ? error.message : "availability check failed"
       }`,
     );
@@ -287,7 +299,7 @@ export async function createGoogleCalendarEvent(
     return data.id;
   } catch (error) {
     throw new Error(
-      `Google Calendar request failed: ${
+      `Google request failed: ${
         error instanceof Error ? error.message : "event creation failed"
       }`,
     );

@@ -19,6 +19,7 @@ Businesses currently need to manually configure conversational behavior and back
 - Generic record capture, escalation, deterministic rules and approved tool dispatch.
 - HTTP actions and outbound webhooks with encrypted authorization headers.
 - Booking, Google Calendar, confirmation, feedback and simulated SMS flows.
+- Self-service Google Sheets sync: authorize Google, connect an existing sheet or create a new one, choose a tab, and append captured records.
 - Agent Studio with calls, leads, records, tool activity and blueprint configuration.
 - Browser microphone testing through AssemblyAI.
 
@@ -72,7 +73,7 @@ GOOGLE_REDIRECT_URI=...
 CONNECTION_ENCRYPTION_KEY=...
 ```
 
-`CONNECTION_ENCRYPTION_KEY` is needed when saving a connection authorization header; use a random 32-byte value encoded as 64 hex characters or base64. Google variables are needed for optional Calendar OAuth. Never commit secrets or expose service-role credentials in browser code.
+`CONNECTION_ENCRYPTION_KEY` is needed when saving connection secrets, including Google Sheets refresh tokens; use a random 32-byte value encoded as 64 hex characters or base64. Google variables are used by optional Calendar and Sheets OAuth. Enable the Google Sheets API in the same Google Cloud project and register `GOOGLE_REDIRECT_URI` as an authorized OAuth redirect URI. Never commit secrets or expose service-role credentials in browser code.
 
 ## Screens / Demo
 
@@ -80,7 +81,7 @@ See the [demo script](HACKATHON_DEMO_SCRIPT.md), [eight-slide content](docs/PRES
 
 1. Choose a starter or Start from scratch, edit the workflow description, then build and review the Blueprint. Starter structure is curated; the freeform option collects a general caller request.
 2. Complete business details, create the agent, and open **Configure connections** in Agent Studio.
-3. Set up any required HTTPS API/webhook endpoint. Authorization headers are AES-GCM encrypted at rest and not returned by the connection API. Calendar tools can use Google or internal slots.
+3. Set up any required HTTPS API/webhook endpoint. Optionally connect Google Sheets from the Connections section to mirror captured Blueprint records into a spreadsheet you control. Authorization headers and Google refresh tokens are AES-GCM encrypted at rest and are never returned by the connection API. Calendar tools can use Google or internal slots.
 4. Start a browser voice test and ask for an approved action. Confirm details when prompted.
 5. Return to Agent Studio for records, tool logs, and call outcome.
 
