@@ -1,0 +1,11 @@
+.git
+.next
+node_modules
+.env*
+.agents
+brag-output-*
+presentation-assets
+supabase/.temp
+skills-lock.json
+tsconfig.tsbuildinfo
+*.log
