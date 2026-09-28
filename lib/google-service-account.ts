@@ -8,13 +8,16 @@ type GoogleServiceAccountCredentials = {
 
 function getCredentials(): GoogleServiceAccountCredentials | null {
   try {
+    const encoded = process.env.GOOGLE_SERVICE_ACCOUNT_JSON_B64?.trim();
     const inline =
       process.env.GOOGLE_SERVICE_ACCOUNT_JSON?.trim() ||
       process.env.GOOGLE_SHEETS_SERVICE_ACCOUNT_JSON?.trim();
     const file =
       process.env.GOOGLE_SERVICE_ACCOUNT_FILE?.trim() ||
       process.env.GOOGLE_SHEETS_SERVICE_ACCOUNT_FILE?.trim();
-    const raw = inline || (file ? readFileSync(file, "utf8") : "");
+    const raw = encoded
+      ? Buffer.from(encoded, "base64url").toString("utf8")
+      : inline || (file ? readFileSync(file, "utf8") : "");
     if (!raw) return null;
     const parsed = JSON.parse(raw) as Partial<GoogleServiceAccountCredentials>;
     if (!parsed.client_email || !parsed.private_key) return null;
