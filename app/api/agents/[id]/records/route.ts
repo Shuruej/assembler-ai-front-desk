@@ -2,7 +2,7 @@ import { createSupabaseServiceRoleClient } from "@/lib/supabase/server";
 import { validateAgentBlueprint } from "@/lib/assembler/blueprint";
 import { decryptSecret } from "@/lib/assembler/connections";
 import { RecordValidationError, validateRecordPayload } from "@/lib/assembler/records";
-import { appendRecordToGoogleSheet, validateGoogleSheetsConfig } from "@/lib/google-sheets";
+import { appendRecordToGoogleSheet, isGoogleSheetsServiceAccountConfigured, validateGoogleSheetsConfig } from "@/lib/google-sheets";
 
 type Context = { params: Promise<{ id: string }> };
 
@@ -44,9 +44,9 @@ export async function POST(request: Request, context: Context) {
   if (error) return Response.json({ error: "Could not save record." }, { status: 500 });
   let googleSheetsSync: "not_connected" | "synced" | "failed" = "not_connected";
   const { data: sheetsConnection } = await supabase.from("agent_connections").select("kind,config,encrypted_secret,status").eq("agent_id", id).eq("connection_key", "google_sheets").maybeSingle();
-  if (sheetsConnection?.kind === "google_sheets" && sheetsConnection.status === "configured" && sheetsConnection.encrypted_secret) {
+  if (sheetsConnection?.kind === "google_sheets" && sheetsConnection.status === "configured" && (sheetsConnection.encrypted_secret || isGoogleSheetsServiceAccountConfigured())) {
     try {
-      await appendRecordToGoogleSheet(decryptSecret(sheetsConnection.encrypted_secret), validateGoogleSheetsConfig(sheetsConnection.config), {
+      await appendRecordToGoogleSheet(sheetsConnection.encrypted_secret ? decryptSecret(sheetsConnection.encrypted_secret) : null, validateGoogleSheetsConfig(sheetsConnection.config), {
         recordType: body.record_type,
         callId: typeof body.call_id === "string" ? body.call_id : null,
         payload,

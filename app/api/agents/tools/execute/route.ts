@@ -3,7 +3,7 @@ import { validateAgentBlueprint } from "@/lib/assembler/blueprint";
 import { decryptSecret, executeOutbound, validateOutboundConfig } from "@/lib/assembler/connections";
 import { dispatchBlueprintTool, type ToolExecutors, type ToolResult } from "@/lib/assembler/registry";
 import { validateRecordPayload } from "@/lib/assembler/records";
-import { appendRecordToGoogleSheet, validateGoogleSheetsConfig } from "@/lib/google-sheets";
+import { appendRecordToGoogleSheet, isGoogleSheetsServiceAccountConfigured, validateGoogleSheetsConfig } from "@/lib/google-sheets";
 import { POST as checkAvailability } from "@/app/api/availability/check/route";
 import { POST as bookSlot } from "@/app/api/availability/book/route";
 import { POST as escalateLead } from "@/app/api/leads/escalate/route";
@@ -39,9 +39,9 @@ export async function POST(request: Request) {
       if (error) throw new Error("Record could not be saved.");
       let googleSheetsSync: "not_connected" | "synced" | "failed" = "not_connected";
       const { data: sheetsConnection } = await supabase.from("agent_connections").select("kind,config,encrypted_secret,status").eq("agent_id", agentId).eq("connection_key", "google_sheets").maybeSingle();
-      if (sheetsConnection?.kind === "google_sheets" && sheetsConnection.status === "configured" && sheetsConnection.encrypted_secret) {
+      if (sheetsConnection?.kind === "google_sheets" && sheetsConnection.status === "configured" && (sheetsConnection.encrypted_secret || isGoogleSheetsServiceAccountConfigured())) {
         try {
-          await appendRecordToGoogleSheet(decryptSecret(sheetsConnection.encrypted_secret), validateGoogleSheetsConfig(sheetsConnection.config), {
+          await appendRecordToGoogleSheet(sheetsConnection.encrypted_secret ? decryptSecret(sheetsConnection.encrypted_secret) : null, validateGoogleSheetsConfig(sheetsConnection.config), {
             recordType: definition.id,
             callId: call.id,
             payload,

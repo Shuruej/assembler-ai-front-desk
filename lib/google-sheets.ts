@@ -1,3 +1,4 @@
+import { GoogleAuth } from "google-auth-library";
 import { getAccessTokenFromRefreshToken } from "./google-calendar";
 
 export type GoogleSheetsConfig = {
@@ -19,6 +20,39 @@ type ValuesResponse = {
 };
 
 const GOOGLE_SHEETS_API = "https://sheets.googleapis.com/v4/spreadsheets";
+const GOOGLE_SHEETS_SCOPE = "https://www.googleapis.com/auth/spreadsheets";
+
+export function getGoogleSheetsServiceAccountEmail(): string | null {
+  const value = process.env.GOOGLE_SHEETS_SERVICE_ACCOUNT_EMAIL?.trim();
+  return value || null;
+}
+
+export function isGoogleSheetsServiceAccountConfigured(): boolean {
+  return Boolean(
+    getGoogleSheetsServiceAccountEmail() &&
+      process.env.GOOGLE_SHEETS_SERVICE_ACCOUNT_PRIVATE_KEY?.trim(),
+  );
+}
+
+async function getServiceAccountAccessToken(): Promise<string> {
+  const clientEmail = getGoogleSheetsServiceAccountEmail();
+  const encodedKey = process.env.GOOGLE_SHEETS_SERVICE_ACCOUNT_PRIVATE_KEY;
+  if (!clientEmail || !encodedKey) {
+    throw new Error("Google Sheets service account is not configured.");
+  }
+
+  const auth = new GoogleAuth({
+    credentials: {
+      client_email: clientEmail,
+      private_key: encodedKey.replace(/\\n/g, "\n"),
+    },
+    scopes: [GOOGLE_SHEETS_SCOPE],
+  });
+  const client = await auth.getClient();
+  const token = await client.getAccessToken();
+  if (!token.token) throw new Error("Google service account did not return an access token.");
+  return token.token;
+}
 
 export function parseGoogleSpreadsheetId(value: string): string {
   const trimmed = value.trim();
@@ -44,11 +78,13 @@ function a1(sheetName: string, range: string): string {
 }
 
 async function googleFetch(
-  refreshToken: string,
+  refreshToken: string | null,
   url: string,
   init: RequestInit = {},
 ): Promise<Response> {
-  const accessToken = await getAccessTokenFromRefreshToken(refreshToken);
+  const accessToken = refreshToken
+    ? await getAccessTokenFromRefreshToken(refreshToken)
+    : await getServiceAccountAccessToken();
   return fetch(url, {
     ...init,
     headers: {
@@ -69,7 +105,7 @@ function googleError(data: { error?: { message?: string } }, fallback: string): 
   return new Error(data.error?.message ?? fallback);
 }
 export async function getGoogleSpreadsheetMetadata(
-  refreshToken: string,
+  refreshToken: string | null,
   spreadsheetValue: string,
 ): Promise<{ spreadsheetId: string; spreadsheetTitle: string; sheets: string[] }> {
   const spreadsheetId = parseGoogleSpreadsheetId(spreadsheetValue);
@@ -119,7 +155,7 @@ export async function createGoogleSpreadsheet(
   };
 }
 export async function appendRecordToGoogleSheet(
-  refreshToken: string,
+  refreshToken: string | null,
   config: GoogleSheetsConfig,
   record: {
     recordType: string;
