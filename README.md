@@ -4,6 +4,8 @@
 
 The blueprint describes identity, behavior, knowledge needs, data fields, tools, connections, rules, outcomes, and a readable workflow. Users review it before agent creation. The existing manual creation, leads, booking, confirmation, feedback, Calendar, simulated SMS, and dashboard flows remain available.
 
+> **Independent reviewers:** start with [REVIEWER_EVIDENCE.md](REVIEWER_EVIDENCE.md). It maps claims to source/tests, reports the fresh 52/52 verification run, defines the security boundary, and separates reproducible implementation evidence from live-service evidence.
+
 ## What it does
 
 Intent → Blueprint → tools/data/rules → voice runtime. Describe the workflow, review its structure, configure required connections, then test the agent and inspect recorded outcomes.
@@ -98,13 +100,13 @@ git diff --check
 
 Tests cover local Blueprint assembly, validation, flat Voice Agent tools, rules, registry failures, record validation, encryption, unsafe URLs, secret-free connection responses, and legacy voice-result ordering. External voice services are mocked.
 
-## Known Limitation
+## Known Limitations
 
-**External AssemblyAI endpoints could not be live-tested in the current network environment.** Local Blueprint assembly is verified. Remote creation, updates and voice calls remain unverified here. Local tests mock external services and do not prove a successful live call.
+Repository verification on 2026-09-29 passes TypeScript, 52/52 automated tests, the production build and `git diff --check`. Automated tests mock external providers, so they prove local contracts rather than provider uptime. A later recorded Auto Repair browser run demonstrates safety escalation and post-tool voice continuation; it should not be generalized into a claim that all six workflows or every external integration were live-exercised.
 
 - There is no account authorization or tenant isolation. **Do not expose this single-operator hackathon app as a public multi-user service.**
 - The new migration must be applied to the target Supabase project; a repository file alone does not change a remote database.
-- Voice quality and remote agent creation depend on AssemblyAI Voice Agent API connectivity. The local Blueprint assembly can be reviewed without external access; end-to-end voice validation remains incomplete.
+- Voice quality and remote agent creation depend on AssemblyAI Voice Agent API connectivity. One recorded Auto Repair browser run reached a real tool outcome and post-tool continuation; broader live validation across all starters remains incomplete.
 - External connections use a fixed HTTPS endpoint, method, JSON body or GET query from approved tool arguments, optional encrypted authorization header, an eight-second timeout, and no redirects. They are not an integration marketplace.
 - The existing Google Calendar path has known timezone and concurrent-booking limitations. Internal slots cover only the seven days generated at agent creation; schedule edits do not replenish them. Confirmation-call booking remains a separate legacy flow.
 - No inbound telephony, real SMS provider, or knowledge-retrieval platform is included. SMS notifications are simulated log entries.

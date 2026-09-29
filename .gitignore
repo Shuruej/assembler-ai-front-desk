@@ -44,3 +44,10 @@ next-env.d.ts
 .netlify
 
 .vercel
+
+# Local agent/tool output
+.agents/
+brag-output-*/
+supabase/.temp/
+skills-lock.json
+deno.lock
