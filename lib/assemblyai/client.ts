@@ -4,8 +4,10 @@ const ASSEMBLYAI_RELAY_URL =
     ? process.env.ASSEMBLYAI_RELAY_URL?.replace(/\/$/, "") || null
     : null;
 import type { AgentBlueprint } from "@/lib/assembler/blueprint";
+import { DEFAULT_VOICE_ID, requireVoiceId, type VoiceId } from "@/lib/assemblyai/voices";
 
 export type CreateAssemblyAIAgentInput = {
+  voiceId?: VoiceId;
   name: string;
   businessName: string;
   industry?: string | null;
@@ -328,6 +330,7 @@ export function buildRuntimeSystemPrompt(input: CreateAssemblyAIAgentInput): str
 }
 
 function buildFrontDeskAgentConfig({
+  voiceId,
   name,
   businessName,
   industry,
@@ -346,7 +349,7 @@ function buildFrontDeskAgentConfig({
       name: blueprint.identity.name,
       system_prompt: buildBlueprintSystemPrompt({ name, businessName, industry, agentPurpose, businessKnowledge, businessHoursStart, businessHoursEnd, businessDays, timezone, confirmationCallEnabled, feedbackEnabled, blueprint }),
       greeting: blueprint.greeting,
-      voice: { voice_id: "alba" },
+      voice: { voice_id: requireVoiceId(voiceId ?? blueprint.voice_id ?? DEFAULT_VOICE_ID) },
       tools: blueprint.tools.map((tool) => ({
         type: "function" as const,
         name: tool.id,
@@ -377,7 +380,7 @@ function buildFrontDeskAgentConfig({
       feedbackEnabled,
     }),
     greeting: `Thanks for calling ${businessName}. How can I help you today?`,
-    voice: { voice_id: "alba" },
+    voice: { voice_id: requireVoiceId(voiceId ?? DEFAULT_VOICE_ID) },
     tools: [
       {
         type: "function",
@@ -500,6 +503,7 @@ function buildFrontDeskAgentConfig({
 }
 
 export async function createAssemblyAIAgent({
+  voiceId,
   name,
   businessName,
   industry,
@@ -517,6 +521,7 @@ export async function createAssemblyAIAgent({
     method: "POST",
     headers: getAssemblyAIHeaders(true),
     body: JSON.stringify(buildFrontDeskAgentConfig({
+      voiceId,
       name,
       businessName,
       industry,

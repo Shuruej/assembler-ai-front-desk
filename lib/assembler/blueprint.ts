@@ -1,3 +1,5 @@
+import { ASSEMBLYAI_VOICES, isVoiceId, type VoiceId } from "@/lib/assemblyai/voices";
+
 export const FIELD_TYPES = ["string", "number", "boolean", "date", "datetime", "phone", "email", "enum"] as const;
 export const TOOL_KINDS = ["internal_record", "http", "webhook", "calendar", "escalation"] as const;
 export const TOOL_OPERATIONS = ["create_record", "http_request", "send_webhook", "check_availability", "create_booking", "escalate"] as const;
@@ -8,6 +10,7 @@ export const WORKFLOW_TYPES = ["conversation", "collect", "tool", "decision", "o
 
 export type AgentBlueprint = {
   version: "1";
+  voice_id?: VoiceId;
   identity: { name: string; role: string };
   objective: string;
   greeting: string;
@@ -31,7 +34,7 @@ const enumeration = (values: readonly string[]) => ({ type: "string", enum: valu
 const nullable = (schema: Schema) => ({ anyOf: [schema, { type: "null" }] });
 
 // Kept beside the domain type and validator for compatibility with saved Blueprints.
-export const AGENT_BLUEPRINT_SCHEMA = object({
+const requiredBlueprintSchema = object({
   version: { type: "string", enum: ["1"] },
   identity: object({ name: string, role: string }),
   objective: string,
@@ -46,13 +49,16 @@ export const AGENT_BLUEPRINT_SCHEMA = object({
   workflow: array(object({ id: identifier, label: string, description: string, type: enumeration(WORKFLOW_TYPES), references: array(identifier) })),
 });
 
+// Optional for version-1 blueprints saved before voice selection existed.
+export const AGENT_BLUEPRINT_SCHEMA = { ...requiredBlueprintSchema, properties: { ...requiredBlueprintSchema.properties, voice_id: enumeration(ASSEMBLYAI_VOICES.map((voice) => voice.id)) } };
+
 export class BlueprintValidationError extends Error {}
 
 function fail(path: string, message: string): never { throw new BlueprintValidationError(`${path}: ${message}`); }
-function record(value: unknown, path: string, keys: string[]): Record<string, unknown> {
+function record(value: unknown, path: string, keys: string[], optionalKeys: string[] = []): Record<string, unknown> {
   if (!value || typeof value !== "object" || Array.isArray(value)) fail(path, "must be an object");
   const result = value as Record<string, unknown>;
-  if (Object.keys(result).some((key) => !keys.includes(key)) || keys.some((key) => !(key in result))) fail(path, "has missing or unsupported properties");
+  if (Object.keys(result).some((key) => !keys.includes(key) && !optionalKeys.includes(key)) || keys.some((key) => !(key in result))) fail(path, "has missing or unsupported properties");
   return result;
 }
 function text(value: unknown, path: string): string {
@@ -73,7 +79,8 @@ function list(value: unknown, path: string, max = 30): unknown[] {
 function unique(values: string[], path: string): void { if (new Set(values).size !== values.length) fail(path, "contains duplicates"); }
 
 export function validateAgentBlueprint(value: unknown): AgentBlueprint {
-  const b = record(value, "blueprint", ["version", "identity", "objective", "greeting", "behavior", "knowledge", "dataFields", "tools", "connections", "rules", "outcomes", "workflow"]);
+  const b = record(value, "blueprint", ["version", "identity", "objective", "greeting", "behavior", "knowledge", "dataFields", "tools", "connections", "rules", "outcomes", "workflow"], ["voice_id"]);
+  if ("voice_id" in b && !isVoiceId(b.voice_id)) fail("voice_id", "has an unsupported value");
   if (b.version !== "1") fail("version", "must be 1");
   const identity = record(b.identity, "identity", ["name", "role"]);
   text(identity.name, "identity.name"); text(identity.role, "identity.role");

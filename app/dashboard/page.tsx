@@ -645,7 +645,7 @@ export default function DashboardPage() {
                   Edit Agent
                 </span>
               )}
-              <Link className="studio-nav-item" href="/#create-agent">
+              <Link className="studio-nav-item" href="/build#create-agent">
                 Create Agent
               </Link>
             </nav>
@@ -666,7 +666,7 @@ export default function DashboardPage() {
                 ) : agents.length === 0 ? (
                   <div className="rounded-xl border border-dashed border-[#C8CED8] p-4">
                     <p className="text-sm font-medium">{error ? "Agents unavailable." : "No agents yet."}</p>
-                    <Link className="mt-3 inline-flex text-sm font-semibold text-[#0B4ED0]" href="/#create-agent">
+                    <Link className="mt-3 inline-flex text-sm font-semibold text-[#0B4ED0]" href="/build#create-agent">
                       {error ? "Create agent" : "Create your first agent"}
                     </Link>
                   </div>
@@ -768,7 +768,7 @@ export default function DashboardPage() {
                     : "Choose an agent in the sidebar to open its overview, calls, leads, and configuration."}
                 </p>
                 {error ? <button className="assembler-secondary-button mt-5" type="button" onClick={() => window.location.reload()}>Try again</button> : !isLoadingAgents && agents.length === 0 ? (
-                  <Link className="assembler-primary-button mt-5" href="/#create-agent">
+                  <Link className="assembler-primary-button mt-5" href="/build#create-agent">
                     Create agent
                   </Link>
                 ) : null}
@@ -1184,3 +1184,4 @@ export default function DashboardPage() {
     </main>
   );
 }
+

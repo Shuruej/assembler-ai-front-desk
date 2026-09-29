@@ -1,3 +1,4 @@
+import { requireVoiceId, DEFAULT_VOICE_ID } from "@/lib/assemblyai/voices";
 import { createAssemblyAIAgent } from "@/lib/assemblyai/client";
 import { BlueprintValidationError, validateAgentBlueprint, type AgentBlueprint } from "@/lib/assembler/blueprint";
 import { createSupabaseServiceRoleClient } from "@/lib/supabase/server";
@@ -10,6 +11,7 @@ export const runtime = "nodejs";
 
 type CreateAgentRequestBody = {
   blueprint?: unknown;
+  voice_id?: unknown;
   business_name?: unknown;
   industry?: unknown;
   name?: unknown;
@@ -25,7 +27,7 @@ type CreateAgentRequestBody = {
   feedback_enabled?: boolean | null;
 };
 
-const PUBLIC_AGENT_COLUMNS = "id,business_name,industry,name,agent_purpose,business_knowledge,business_hours_start,business_hours_end,business_days,appointment_duration_minutes,timezone,assemblyai_agent_id,confirmation_call_enabled,feedback_enabled,google_calendar_connected,created_at,blueprint";
+const PUBLIC_AGENT_COLUMNS = "id,business_name,industry,name,agent_purpose,business_knowledge,business_hours_start,business_hours_end,business_days,appointment_duration_minutes,timezone,assemblyai_agent_id,confirmation_call_enabled,feedback_enabled,google_calendar_connected,created_at,blueprint,voice_id";
 const LEGACY_AGENT_COLUMNS = "id,business_name,industry,name,agent_purpose,business_knowledge,business_hours_start,business_hours_end,business_days,appointment_duration_minutes,timezone,assemblyai_agent_id,confirmation_call_enabled,feedback_enabled,google_calendar_connected,created_at";
 
 const DEFAULT_BUSINESS_DAYS = "mon,tue,wed,thu,fri,sat,sun";
@@ -214,8 +216,16 @@ export async function GET() {
     .select(PUBLIC_AGENT_COLUMNS)
     .order("created_at", { ascending: false });
   if (error?.code === "42703" || error?.code === "PGRST204") {
+    const withoutVoice = await supabase.from("agents").select(PUBLIC_AGENT_COLUMNS.replace(",voice_id", "")).order("created_at", { ascending: false });
+    agents = withoutVoice.data as typeof agents; error = withoutVoice.error;
+  }
+  if (error?.code === "42703" || error?.code === "PGRST204") {
+    const withoutBlueprint = await supabase.from("agents").select(LEGACY_AGENT_COLUMNS + ",voice_id").order("created_at", { ascending: false });
+    agents = withoutBlueprint.data as typeof agents; error = withoutBlueprint.error;
+  }
+  if (error?.code === "42703" || error?.code === "PGRST204") {
     const fallback = await supabase.from("agents").select(LEGACY_AGENT_COLUMNS).order("created_at", { ascending: false });
-    agents = fallback.data?.map((agent) => ({ ...agent, blueprint: null })) ?? null;
+    agents = fallback.data?.map((agent) => ({ ...agent, blueprint: null, voice_id: null })) ?? null;
     error = fallback.error;
   }
 
@@ -233,6 +243,11 @@ export async function POST(request: Request) {
     body = (await request.json()) as CreateAgentRequestBody;
   } catch {
     return Response.json({ error: "Invalid JSON request body." }, { status: 400 });
+  }
+
+  if (body.voice_id !== undefined) {
+    try { requireVoiceId(body.voice_id); }
+    catch { return Response.json({ error: "Unsupported AssemblyAI voice ID." }, { status: 400 }); }
   }
 
   if (!isNonEmptyString(body.business_name)) {
@@ -283,6 +298,8 @@ export async function POST(request: Request) {
     );
   }
 
+  const voiceId = requireVoiceId(body.voice_id ?? blueprint?.voice_id ?? DEFAULT_VOICE_ID);
+  if (blueprint) blueprint = { ...blueprint, voice_id: voiceId };
   const businessName = body.business_name.trim();
   const name = body.name.trim();
   for (const key of ["confirmation_call_enabled", "feedback_enabled"] as const) {
@@ -301,6 +318,9 @@ export async function POST(request: Request) {
         ? body.feedback_enabled
         : uiPreferences.collect_feedback_after_confirmation,
   });
+
+  const voiceStorage = await createSupabaseServiceRoleClient().from("agents").select("voice_id").limit(0);
+  if (voiceStorage.error) return Response.json({ error: "Voice storage is not ready. Apply the agent voice migration before saving." }, { status: 503 });
 
   // Do not mint a remote voice agent if the additive Assembler migration is absent.
   if (blueprint) {
@@ -330,12 +350,14 @@ export async function POST(request: Request) {
       confirmationCallEnabled: preferences.confirmation_call_enabled,
       feedbackEnabled: preferences.feedback_enabled,
       blueprint,
+      voiceId,
     });
 
     const supabase = createSupabaseServiceRoleClient();
     const { data: agent, error } = await supabase
       .from("agents")
       .insert({
+        voice_id: voiceId,
         business_name: businessName,
         industry,
         name,
@@ -350,7 +372,7 @@ export async function POST(request: Request) {
         ...preferences,
         ...(blueprint ? { blueprint } : {}),
       })
-      .select(LEGACY_AGENT_COLUMNS)
+      .select(LEGACY_AGENT_COLUMNS + ",voice_id")
       .single();
 
     if (error) {
@@ -359,7 +381,7 @@ export async function POST(request: Request) {
 
     try {
       const slots = buildInitialAgentSlots(
-        agent.id,
+        (agent as unknown as { id: string }).id,
         businessHoursStart,
         businessHoursEnd,
         businessDays,
@@ -377,7 +399,7 @@ export async function POST(request: Request) {
       console.error("Failed to create initial agent slots.", slotError);
     }
 
-    return Response.json(blueprint ? { ...agent, blueprint } : agent, { status: 201 });
+    return Response.json(blueprint ? { ...(agent as unknown as Record<string, unknown>), blueprint } : agent, { status: 201 });
   } catch (error) {
     return Response.json(
       {

@@ -1,6 +1,7 @@
 "use client";
 
 import { use, useEffect, useRef, useState } from "react";
+import { savedVoiceId, type VoiceId } from "@/lib/assemblyai/voices";
 import { FOLLOW_UP_DISABLED_MESSAGE, normalizeAgentFollowUpPreferences } from "@/lib/follow-up-preferences";
 
 type TranscriptEntry = {
@@ -28,6 +29,7 @@ type Lead = {
 };
 
 type ConfirmationContext = {
+  voice_id?: VoiceId;
   confirmation_call_enabled?: boolean;
   feedback_enabled?: boolean;
   lead: Lead;
@@ -719,7 +721,7 @@ export default function ConfirmLeadPage({
                 format: { encoding: "audio/pcm" },
               },
               output: {
-                voice: "alba",
+                voice: savedVoiceId(sessionContext),
                 format: { encoding: "audio/pcm" },
               },
               tools: [

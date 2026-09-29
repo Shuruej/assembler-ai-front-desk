@@ -14,7 +14,7 @@ function load(file, dependencies = {}) {
   const exports = {};
   vm.runInNewContext(compile(fs.readFileSync(file, 'utf8')), {
     exports, Response, Date, Intl,
-    require(name) {
+    require(name) { if (name === "@/lib/assemblyai/voices" || name === "./voices") return load("lib/assemblyai/voices.ts");
       if (!(name in dependencies)) throw new Error(`Unexpected dependency: ${name}`);
       return dependencies[name];
     },
@@ -32,6 +32,7 @@ function database(rows) {
     from(table) {
       const query = {
         select() { return query; },
+        async limit() { return { data: [], error: null }; },
         eq() { return query; },
         insert(value) { writes.push({ table, value: plain(value) }); return query; },
         update(value) { writes.push({ table, value: plain(value) }); return query; },

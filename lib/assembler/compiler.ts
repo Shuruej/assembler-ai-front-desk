@@ -1,3 +1,4 @@
+import { selectPromptVoice, type VoiceId } from "@/lib/assemblyai/voices";
 import { validateAgentBlueprint, type AgentBlueprint } from "./blueprint";
 
 type Field = AgentBlueprint["dataFields"][number];
@@ -62,12 +63,13 @@ function profile(id: StarterId | null): Profile {
 }
 
 /** Deterministic local assembly; the description stays editable and is never sent to a model. */
-export function assembleAgentBlueprint(intent: string, starterId: StarterId | null = null): AgentBlueprint {
+export function assembleAgentBlueprint(intent: string, starterId: StarterId | null = null, voiceOverride?: VoiceId): AgentBlueprint {
   const selected = STARTER_WORKFLOWS.find((starter) => starter.id === starterId);
   if (starterId && !selected) throw new Error("Unknown starter workflow.");
   const description = intent.trim();
   if (description.length < 20 || description.length > 5000) throw new Error("Describe the agent in 20 to 5,000 characters.");
   const details = profile(starterId);
+  const voice_id = selectPromptVoice(description, voiceOverride);
   const [objective, ...remainingIntent] = description.match(/[\s\S]{1,1800}/g) ?? [];
-  return validateAgentBlueprint({ version: "1", identity: { name: selected ? `${selected.title} Agent` : "Workflow Agent", role: details.role }, objective, greeting: "Hello, how can I help you today?", behavior: { instructions: [...remainingIntent.map((part) => `Additional workflow detail: ${part.trim()}`), "Follow the described workflow and collect the listed details.", "Confirm details before taking an action. Only claim success after its tool result confirms it.", "If a connection or fact is unavailable, explain this and offer human follow-up."] }, knowledge: { requirements: details.knowledge }, dataFields: details.fields, tools: details.tools, connections: details.connections, rules: details.rules, outcomes: details.outcomes, workflow: details.workflow });
+  return validateAgentBlueprint({ version: "1", voice_id, identity: { name: selected ? `${selected.title} Agent` : "Workflow Agent", role: details.role }, objective, greeting: "Hello, how can I help you today?", behavior: { instructions: [...remainingIntent.map((part) => `Additional workflow detail: ${part.trim()}`), "Follow the described workflow and collect the listed details.", "Confirm details before taking an action. Only claim success after its tool result confirms it.", "If a connection or fact is unavailable, explain this and offer human follow-up."] }, knowledge: { requirements: details.knowledge }, dataFields: details.fields, tools: details.tools, connections: details.connections, rules: details.rules, outcomes: details.outcomes, workflow: details.workflow });
 }

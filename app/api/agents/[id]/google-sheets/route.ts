@@ -43,7 +43,10 @@ async function getConnection(agentId: string, reviewerId: string | null) {
       .eq("agent_id", agentId)
       .maybeSingle();
     if (error) throw new Error("Could not load reviewer Google Sheets connection.");
-    return { supabase, connection: data ? { ...data, kind: "google_sheets", encrypted_secret: null } : null };
+    if (data?.status === "configured") return { supabase, connection: { ...data, kind: "google_sheets", encrypted_secret: null } };
+    const fallback = await supabase.from("agent_connections").select("id,kind,config,encrypted_secret,status").eq("agent_id", agentId).eq("connection_key", "google_sheets").maybeSingle();
+    if (fallback.error) throw new Error("Could not load demo Google Sheets connection.");
+    return { supabase, connection: fallback.data };
   }
   const { data, error } = await supabase
     .from("agent_connections")

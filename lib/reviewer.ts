@@ -32,7 +32,7 @@ export function isLocalReviewerRequest(request: Request): boolean {
 }
 
 async function signSessionId(sessionId: string): Promise<string> {
-  const secret = process.env.REVIEWER_SESSION_SECRET?.trim();
+  const secret = process.env.REVIEWER_SESSION_SECRET?.trim() || process.env.CONNECTION_ENCRYPTION_KEY?.trim();
   if (!secret) throw new Error("Reviewer session secret is not configured.");
   const key = await crypto.subtle.importKey("raw", bytes(secret), { name: "HMAC", hash: "SHA-256" }, false, ["sign"]);
   return base64url(await crypto.subtle.sign("HMAC", key, bytes(sessionId)));

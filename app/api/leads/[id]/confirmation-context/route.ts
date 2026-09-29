@@ -1,4 +1,5 @@
 import { createSupabaseServiceRoleClient } from "@/lib/supabase/server";
+import { savedVoiceId } from "@/lib/assemblyai/voices";
 import { normalizeAgentFollowUpPreferences } from "@/lib/follow-up-preferences";
 
 export async function GET(
@@ -53,6 +54,7 @@ export async function GET(
       feedback_notes: lead.feedback_notes,
     },
     business_name: agent.business_name,
+    voice_id: savedVoiceId(agent),
     industry: agent.industry,
     agent_name: agent.name,
     business_hours_start: agent.business_hours_start,

@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getReviewerSessionId, isLocalReviewerRequest } from "@/lib/reviewer";
+import { createReviewerSessionCookie, getReviewerSessionId, isLocalReviewerRequest } from "@/lib/reviewer";
 
 export default async function proxy(request: NextRequest) {
   const pathname = request.nextUrl.pathname;
@@ -14,9 +14,21 @@ export default async function proxy(request: NextRequest) {
   }
 
   if (pathname.startsWith("/api/")) {
-    return NextResponse.json({ error: "Private reviewer demo." }, { status: 401 });
+    return NextResponse.json({ error: "Start a browser session from the app first." }, { status: 401 });
   }
-  return NextResponse.rewrite(new URL("/private-demo", request.url));
+
+  const session = await createReviewerSessionCookie();
+  const response = NextResponse.redirect(request.nextUrl);
+  response.cookies.set({
+    name: session.name,
+    value: session.value,
+    httpOnly: true,
+    sameSite: "lax",
+    secure: request.nextUrl.protocol === "https:",
+    path: "/",
+    maxAge: 60 * 60 * 24,
+  });
+  return response;
 }
 
 export const config = {

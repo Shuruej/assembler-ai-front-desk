@@ -1,5 +1,7 @@
 "use client";
 
+import { VoicePicker } from "@/components/assembler/VoicePicker";
+import { savedVoiceId, type VoiceId } from "@/lib/assemblyai/voices";
 import Link from "next/link";
 import { AssemblerLogo } from "@/components/assembler/AssemblerLogo";
 import { FormEvent, useEffect, useMemo, useState } from "react";
@@ -30,6 +32,8 @@ const DEFAULT_BUSINESS_HOURS_END = "18:00";
 const DEFAULT_APPOINTMENT_DURATION_MINUTES = 60;
 
 type Agent = {
+  voice_id?: VoiceId;
+  blueprint?: { voice_id?: VoiceId } | null;
   id: string;
   business_name: string | null;
   industry: string | null;
@@ -64,6 +68,7 @@ export default function EditAgentPage() {
   const agentId = useMemo(() => params.id, [params.id]);
   const [businessName, setBusinessName] = useState("");
   const [industry, setIndustry] = useState("");
+  const [voiceId, setVoiceId] = useState<VoiceId>("alba");
   const [agentName, setAgentName] = useState("");
   const [agentPurpose, setAgentPurpose] = useState("general_receptionist");
   const [businessKnowledge, setBusinessKnowledge] = useState("");
@@ -104,6 +109,7 @@ export default function EditAgentPage() {
         setBusinessName(data.business_name ?? "");
         setIndustry(data.industry ?? "");
         setAgentName(data.name ?? "");
+        setVoiceId(savedVoiceId(data));
         setAgentPurpose(data.agent_purpose ?? "general_receptionist");
         setBusinessKnowledge(data.business_knowledge ?? "");
         setBusinessHoursStart(
@@ -172,6 +178,7 @@ export default function EditAgentPage() {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
+          voice_id: voiceId,
           business_name: trimmedBusinessName,
           industry: industry.trim(),
           name: trimmedAgentName,
@@ -193,6 +200,7 @@ export default function EditAgentPage() {
       setBusinessName(data.business_name ?? "");
       setIndustry(data.industry ?? "");
       setAgentName(data.name ?? "");
+        setVoiceId(savedVoiceId(data));
       setAgentPurpose(data.agent_purpose ?? "general_receptionist");
       setBusinessKnowledge(data.business_knowledge ?? "");
       setBusinessHoursStart(data.business_hours_start ?? DEFAULT_BUSINESS_HOURS_START);
@@ -251,6 +259,7 @@ export default function EditAgentPage() {
             </div>
           ) : (
             <form className="mt-8" onSubmit={handleSubmit}>
+              <VoicePicker value={voiceId} onChange={setVoiceId} disabled={isSaving} />
               <div className="grid gap-4 sm:grid-cols-2">
                 <div className="flex flex-col gap-2">
                   <label className="text-sm font-medium" htmlFor="business-name">

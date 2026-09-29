@@ -1,94 +1,10 @@
-const ASSEMBLYAI_TOKEN_URL = "https://agents.assemblyai.com/v1/token";
-const ASSEMBLYAI_WS_URL = "wss://agents.assemblyai.com/v1/ws";
-const ASSEMBLYAI_RELAY_URL = process.env.ASSEMBLYAI_RELAY_URL?.replace(/\/$/, "") || null;
-
-type AssemblyAITokenResponse = {
-  token?: string;
-};
-
-function getTokenUrl(): URL {
-  return new URL(ASSEMBLYAI_RELAY_URL ? `${ASSEMBLYAI_RELAY_URL}/token` : ASSEMBLYAI_TOKEN_URL);
-}
-
-function getVoiceWebSocketUrl(): string {
-  if (!ASSEMBLYAI_RELAY_URL) return ASSEMBLYAI_WS_URL;
-  return `${ASSEMBLYAI_RELAY_URL.replace(/^http/, "ws")}/ws`;
-}
-
-function requireAssemblyAIApiKey(): string {
-  const apiKey = process.env.ASSEMBLYAI_API_KEY;
-
-  if (!apiKey) {
-    throw new Error("Missing ASSEMBLYAI_API_KEY environment variable.");
-  }
-
-  return apiKey;
-}
-
-function getAgentIdFromRequest(request: Request): string | null {
-  const { searchParams } = new URL(request.url);
-  const agentId = searchParams.get("agent_id")?.trim();
-
-  return agentId && agentId.length > 0 ? agentId : null;
-}
-
-async function parseAssemblyAIError(response: Response): Promise<string> {
-  const contentType = response.headers.get("content-type");
-
-  if (contentType?.includes("application/json")) {
-    const data = (await response.json()) as { error?: string; detail?: string };
-    return data.detail ?? data.error ?? `AssemblyAI token request failed with status ${response.status}.`;
-  }
-
-  const text = await response.text();
-  return text || `AssemblyAI token request failed with status ${response.status}.`;
-}
+import { mintVoiceToken } from "@/lib/assemblyai/token";
 
 export async function GET(request: Request) {
-  const agentId = getAgentIdFromRequest(request);
-
   try {
-    const url = getTokenUrl();
-    url.searchParams.set("expires_in_seconds", "300");
-    url.searchParams.set("max_session_duration_seconds", "1800");
-
-    const apiKey = requireAssemblyAIApiKey();
-    const response = await fetch(url, {
-      headers: ASSEMBLYAI_RELAY_URL
-        ? { "x-assemblyai-key": apiKey }
-        : { Authorization: `Bearer ${apiKey}` },
-    });
-
-    if (!response.ok) {
-      return Response.json(
-        { error: await parseAssemblyAIError(response) },
-        { status: response.status },
-      );
-    }
-
-    const data = (await response.json()) as AssemblyAITokenResponse;
-
-    if (!data.token) {
-      return Response.json(
-        { error: "AssemblyAI token response did not include a token." },
-        { status: 502 },
-      );
-    }
-
-    if (agentId) {
-      return Response.json({ token: data.token, agent_id: agentId, ws_url: getVoiceWebSocketUrl() });
-    }
-
-    return Response.json({ token: data.token, ws_url: getVoiceWebSocketUrl() });
-  } catch (error) {
-    return Response.json(
-      {
-        error:
-          error instanceof Error
-            ? error.message
-            : "Failed to create AssemblyAI voice token.",
-      },
-      { status: 500 },
-    );
+    const agentId = new URL(request.url).searchParams.get("agent_id")?.trim();
+    return Response.json({ ...await mintVoiceToken(), ...(agentId ? { agent_id: agentId } : {}) }, { headers: { "Cache-Control": "no-store" } });
+  } catch {
+    return Response.json({ error: "Failed to create AssemblyAI voice token." }, { status: 502 });
   }
 }

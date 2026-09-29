@@ -1,11 +1,13 @@
+import { requireVoiceId, savedVoiceId } from "@/lib/assemblyai/voices";
 import { updateAssemblyAIAgent } from "@/lib/assemblyai/client";
 import { createSupabaseServiceRoleClient } from "@/lib/supabase/server";
 import { validateAgentBlueprint } from "@/lib/assembler/blueprint";
 
-const PUBLIC_AGENT_COLUMNS = "id,business_name,industry,name,agent_purpose,business_knowledge,business_hours_start,business_hours_end,business_days,appointment_duration_minutes,timezone,assemblyai_agent_id,confirmation_call_enabled,feedback_enabled,google_calendar_connected,created_at,blueprint";
+const PUBLIC_AGENT_COLUMNS = "id,business_name,industry,name,agent_purpose,business_knowledge,business_hours_start,business_hours_end,business_days,appointment_duration_minutes,timezone,assemblyai_agent_id,confirmation_call_enabled,feedback_enabled,google_calendar_connected,created_at,blueprint,voice_id";
 const LEGACY_AGENT_COLUMNS = "id,business_name,industry,name,agent_purpose,business_knowledge,business_hours_start,business_hours_end,business_days,appointment_duration_minutes,timezone,assemblyai_agent_id,confirmation_call_enabled,feedback_enabled,google_calendar_connected,created_at";
 
 type UpdateAgentRequestBody = {
+  voice_id?: unknown;
   business_name?: unknown;
   industry?: unknown;
   name?: unknown;
@@ -135,6 +137,12 @@ export async function GET(
     .eq("id", id)
     .single();
   if (error?.code === "42703" || error?.code === "PGRST204") {
+    ({ data: agent, error } = await supabase.from("agents").select(PUBLIC_AGENT_COLUMNS.replace(",voice_id", "")).eq("id", id).single());
+  }
+  if (error?.code === "42703" || error?.code === "PGRST204") {
+    ({ data: agent, error } = await supabase.from("agents").select(LEGACY_AGENT_COLUMNS + ",voice_id").eq("id", id).single());
+  }
+  if (error?.code === "42703" || error?.code === "PGRST204") {
     ({ data: agent, error } = await supabase.from("agents").select(LEGACY_AGENT_COLUMNS).eq("id", id).single());
   }
 
@@ -156,6 +164,11 @@ export async function PUT(
     body = (await request.json()) as UpdateAgentRequestBody;
   } catch {
     return Response.json({ error: "Invalid JSON request body." }, { status: 400 });
+  }
+
+  if (body.voice_id !== undefined) {
+    try { requireVoiceId(body.voice_id); }
+    catch { return Response.json({ error: "Unsupported AssemblyAI voice ID." }, { status: 400 }); }
   }
 
   if (!isNonEmptyString(body.business_name)) {
@@ -207,11 +220,14 @@ export async function PUT(
   const supabase = createSupabaseServiceRoleClient();
   let { data: existingAgent, error: lookupError } = await supabase
     .from("agents")
-    .select("id,assemblyai_agent_id,timezone,confirmation_call_enabled,feedback_enabled,blueprint")
+    .select("id,assemblyai_agent_id,timezone,confirmation_call_enabled,feedback_enabled,blueprint,voice_id")
     .eq("id", id)
     .single();
   if (lookupError?.code === "42703" || lookupError?.code === "PGRST204") {
-    ({ data: existingAgent, error: lookupError } = await supabase.from("agents").select("id,assemblyai_agent_id,timezone,confirmation_call_enabled,feedback_enabled").eq("id", id).single());
+    ({ data: existingAgent, error: lookupError } = await supabase.from("agents").select("id,assemblyai_agent_id,timezone,confirmation_call_enabled,feedback_enabled,voice_id").eq("id", id).single());
+  }
+  if (lookupError?.code === "42703" || lookupError?.code === "PGRST204") {
+    return Response.json({ error: "Voice storage is not ready. Apply the agent voice migration before saving." }, { status: 503 });
   }
 
   if (lookupError || !existingAgent) {
@@ -225,11 +241,13 @@ export async function PUT(
     );
   }
 
+  const voiceId = body.voice_id === undefined ? savedVoiceId(existingAgent) : requireVoiceId(body.voice_id);
   let blueprint = null;
   if (existingAgent.blueprint) {
     try {
       blueprint = validateAgentBlueprint({
         ...existingAgent.blueprint,
+        voice_id: voiceId,
         identity: { ...existingAgent.blueprint.identity, name },
       });
     } catch {
@@ -251,6 +269,7 @@ export async function PUT(
       confirmationCallEnabled: existingAgent.confirmation_call_enabled,
       feedbackEnabled: existingAgent.feedback_enabled,
       blueprint,
+      voiceId,
     });
   } catch (error) {
     return Response.json(
@@ -267,6 +286,7 @@ export async function PUT(
   const { data: agent, error } = await supabase
     .from("agents")
     .update({
+      voice_id: voiceId,
       business_name: businessName,
       industry,
       name,
@@ -279,12 +299,12 @@ export async function PUT(
       ...(blueprint ? { blueprint } : {}),
     })
     .eq("id", id)
-    .select(LEGACY_AGENT_COLUMNS)
+    .select(LEGACY_AGENT_COLUMNS + ",voice_id")
     .single();
 
   if (error) {
     return Response.json({ error: error.message }, { status: 500 });
   }
 
-  return Response.json(blueprint ? { ...agent, blueprint } : agent);
+  return Response.json(blueprint ? { ...(agent as unknown as Record<string, unknown>), blueprint } : agent);
 }

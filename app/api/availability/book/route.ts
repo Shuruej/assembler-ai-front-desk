@@ -139,21 +139,26 @@ async function syncBookingToGoogleSheet({
     google_event_id?: string | null;
   };
 }): Promise<BookingSheetsSync> {
-  const lookup = reviewerId
+  const reviewerLookup = reviewerId
     ? await supabase
         .from("reviewer_sheet_connections")
         .select("config,status")
         .eq("reviewer_id", reviewerId)
         .eq("agent_id", agentId)
         .maybeSingle()
-    : await supabase
+    : null;
+  const ownerLookup = !reviewerLookup?.data || reviewerLookup.data.status !== "configured"
+    ? await supabase
         .from("agent_connections")
         .select("kind,config,encrypted_secret,status")
         .eq("agent_id", agentId)
         .eq("connection_key", "google_sheets")
-        .maybeSingle();
+        .maybeSingle()
+    : null;
 
-  const connection = lookup.data as {
+  const connection = (reviewerLookup?.data?.status === "configured"
+    ? reviewerLookup.data
+    : ownerLookup?.data) as {
     kind?: string;
     config?: unknown;
     encrypted_secret?: string | null;
@@ -279,10 +284,15 @@ export async function POST(request: Request) {
 
   const agent = Array.isArray(call.agents) ? call.agents[0] : call.agents;
   const reviewerId = request.headers.get("x-assembler-reviewer-id") ?? await getReviewerSessionId(request);
-  const sharedCalendarLookup = reviewerId
+  const reviewerCalendarLookup = reviewerId
     ? await supabase.from("reviewer_calendar_connections").select("config,status").eq("reviewer_id", reviewerId).eq("agent_id", call.agent_id).maybeSingle()
-    : await supabase.from("agent_connections").select("config,status").eq("agent_id", call.agent_id).eq("connection_key", "google_calendar").maybeSingle();
-  const sharedCalendar = sharedCalendarLookup.data;
+    : null;
+  const demoCalendarLookup = !reviewerCalendarLookup?.data || reviewerCalendarLookup.data.status !== "configured"
+    ? await supabase.from("agent_connections").select("config,status").eq("agent_id", call.agent_id).eq("connection_key", "google_calendar").maybeSingle()
+    : null;
+  const sharedCalendar = reviewerCalendarLookup?.data?.status === "configured"
+    ? reviewerCalendarLookup.data
+    : demoCalendarLookup?.data;
   const hasSharedCalendar = sharedCalendar?.status === "configured";
   const hasLegacyCalendar = Boolean(agent?.google_calendar_connected && agent.google_refresh_token);
 

@@ -35,7 +35,10 @@ async function getConnection(agentId: string, reviewerId: string | null) {
       .eq("agent_id", agentId)
       .maybeSingle();
     if (error) throw new Error("Could not load reviewer Google Calendar connection.");
-    return { supabase, connection: data };
+    if (data?.status === "configured") return { supabase, connection: data };
+    const fallback = await supabase.from("agent_connections").select("id,config,status").eq("agent_id", agentId).eq("connection_key", "google_calendar").maybeSingle();
+    if (fallback.error) throw new Error("Could not load demo Google Calendar connection.");
+    return { supabase, connection: fallback.data };
   }
 
   const { data, error } = await supabase

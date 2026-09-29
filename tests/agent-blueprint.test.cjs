@@ -7,7 +7,7 @@ const ts = require('typescript');
 function load(path, dependencies = {}, globals = {}) {
   const exports = {};
   const source = ts.transpileModule(fs.readFileSync(path, 'utf8'), { compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.CommonJS } }).outputText;
-  vm.runInNewContext(source, { exports, console, AbortSignal, Response, ...globals, require(name) { if (!(name in dependencies)) throw new Error(`Unexpected import: ${name}`); return dependencies[name]; } });
+  vm.runInNewContext(source, { exports, console, AbortSignal, Response, ...globals, require(name) { if (name === "@/lib/assemblyai/voices" || name === "./voices") return load("lib/assemblyai/voices.ts"); if (!(name in dependencies)) throw new Error(`Unexpected import: ${name}`); return dependencies[name]; } });
   return exports;
 }
 const blueprintModule = load('lib/assembler/blueprint.ts');

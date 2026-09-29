@@ -84,10 +84,15 @@ export async function POST(request: Request) {
 
   const agent = Array.isArray(call.agents) ? call.agents[0] : call.agents;
   const reviewerId = request.headers.get("x-assembler-reviewer-id") ?? await getReviewerSessionId(request);
-  const sharedCalendarLookup = reviewerId
+  const reviewerCalendarLookup = reviewerId
     ? await supabase.from("reviewer_calendar_connections").select("config,status").eq("reviewer_id", reviewerId).eq("agent_id", call.agent_id).maybeSingle()
-    : await supabase.from("agent_connections").select("config,status").eq("agent_id", call.agent_id).eq("connection_key", "google_calendar").maybeSingle();
-  const sharedCalendar = sharedCalendarLookup.data;
+    : null;
+  const demoCalendarLookup = !reviewerCalendarLookup?.data || reviewerCalendarLookup.data.status !== "configured"
+    ? await supabase.from("agent_connections").select("config,status").eq("agent_id", call.agent_id).eq("connection_key", "google_calendar").maybeSingle()
+    : null;
+  const sharedCalendar = reviewerCalendarLookup?.data?.status === "configured"
+    ? reviewerCalendarLookup.data
+    : demoCalendarLookup?.data;
 
   if (sharedCalendar?.status === "configured") {
     try {
