@@ -14,6 +14,8 @@ function load(path, dependencies = {}, globals = {}) {
 }
 const rules = load('lib/assembler/rules.ts');
 const registry = load('lib/assembler/registry.ts', { './rules': rules });
+const blueprintModule = load('lib/assembler/blueprint.ts');
+const compiler = load('lib/assembler/compiler.ts', { './blueprint': blueprintModule });
 const records = load('lib/assembler/records.ts');
 const connections = load('lib/assembler/connections.ts', { 'node:crypto': crypto, 'node:net': net });
 const basic = () => ({
@@ -52,6 +54,27 @@ test('rule-triggered escalation persists the escalation tool outcome', async () 
   const result = await registry.dispatchBlueprintTool({ blueprint, toolId: 'save_order', arguments: { order_id: 'COMPLAINT' }, executors, setOutcome: async id => saved.push(id) });
   assert.equal(result.outcome, 'human_follow_up'); assert.deepEqual(saved, ['human_follow_up']);
 });
+test('Auto Repair emergency intake is deterministically redirected to escalation', async () => {
+  const starter = compiler.STARTER_WORKFLOWS.find(item => item.id === 'auto_repair');
+  const blueprint = compiler.assembleAgentBlueprint(starter.intent, 'auto_repair');
+  const calls = [];
+  const trackingExecutors = {
+    ...executors,
+    internal_record: async () => { calls.push('internal_record'); return { success: true }; },
+    escalation: async (_tool, args) => { calls.push('escalation'); return { success: true, data: { reason: args.reason } }; },
+  };
+  const outcomes = [];
+  const result = await registry.dispatchBlueprintTool({
+    blueprint, toolId: 'save_service_request',
+    arguments: { customer_name: 'Test', phone_number: '555', vehicle: '2018 Toyota Corolla', issue: 'brake failure', urgency: 'emergency' },
+    executors: trackingExecutors, setOutcome: async id => outcomes.push(id),
+  });
+  assert.equal(result.success, true);
+  assert.deepEqual(calls, ['escalation']);
+  assert.equal(result.outcome, 'escalated');
+  assert.deepEqual(outcomes, ['escalated']);
+});
+
 test('registry rejects unknown tools and invalid arguments', async () => {
   const blueprint = basic();
   assert.equal((await registry.dispatchBlueprintTool({ blueprint, toolId: 'unknown', arguments: {}, executors })).code, 'unknown_tool');

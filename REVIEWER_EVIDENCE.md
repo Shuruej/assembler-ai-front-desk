@@ -12,7 +12,7 @@ npm run build
 git diff --check
 ```
 
-Fresh verification on 2026-09-29: TypeScript PASS; 52/52 automated tests PASS; production build PASS; diff check PASS.
+Fresh verification on 2026-09-30: TypeScript PASS; 53/53 automated tests PASS; production build PASS; diff check PASS. The suite now includes a regression test proving Auto Repair emergency intake is deterministically redirected from the ordinary record action to `escalate_issue`, with outcome `escalated`.
 
 ## What the repository directly proves
 

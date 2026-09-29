@@ -4,7 +4,7 @@
 
 The blueprint describes identity, behavior, knowledge needs, data fields, tools, connections, rules, outcomes, and a readable workflow. Users review it before agent creation. The existing manual creation, leads, booking, confirmation, feedback, Calendar, simulated SMS, and dashboard flows remain available.
 
-> **Independent reviewers:** start with [REVIEWER_EVIDENCE.md](REVIEWER_EVIDENCE.md). It maps claims to source/tests, reports the fresh 52/52 verification run, defines the security boundary, and separates reproducible implementation evidence from live-service evidence.
+> **Independent reviewers:** start with [REVIEWER_EVIDENCE.md](REVIEWER_EVIDENCE.md). It maps claims to source/tests, reports the fresh 53/53 verification run, defines the security boundary, and separates reproducible implementation evidence from live-service evidence.
 
 ## What it does
 
@@ -102,7 +102,7 @@ Tests cover local Blueprint assembly, validation, flat Voice Agent tools, rules,
 
 ## Known Limitations
 
-Repository verification on 2026-09-29 passes TypeScript, 52/52 automated tests, the production build and `git diff --check`. Automated tests mock external providers, so they prove local contracts rather than provider uptime. A later recorded Auto Repair browser run demonstrates safety escalation and post-tool voice continuation; it should not be generalized into a claim that all six workflows or every external integration were live-exercised.
+Repository verification on 2026-09-30 passes TypeScript, 53/53 automated tests, the production build and `git diff --check`. The suite includes a regression test proving Auto Repair emergency intake is deterministically redirected to `escalate_issue`; external-provider tests still use mocks where appropriate, so they prove local contracts rather than provider uptime. A recorded Auto Repair browser run demonstrates safety escalation and post-tool voice continuation; it should not be generalized into a claim that all six workflows or every external integration were live-exercised.
 
 - There is no account authorization or tenant isolation. **Do not expose this single-operator hackathon app as a public multi-user service.**
 - The new migration must be applied to the target Supabase project; a repository file alone does not change a remote database.
