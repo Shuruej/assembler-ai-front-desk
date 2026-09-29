@@ -47,6 +47,8 @@ export default function GoogleCalendarSetupPage() {
     setError(null);
     setMessage(null);
     try {
+      // The endpoint returns a tested calendar config for `test` and connection state for `save`.
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const result = await json<any>(`/api/agents/${id}/google-calendar`, {
         method: "POST",
         headers: { "content-type": "application/json" },
