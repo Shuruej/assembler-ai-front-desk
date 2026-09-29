@@ -30,6 +30,8 @@ The repository proves implementation and mocked/local contracts. It does not cla
 
 A recorded browser run used Auto Repair safety escalation: a brake-risk request triggered `escalate_issue`, returned outcome `escalated`, and the agent continued speaking after the tool result. Treat this as recorded demo evidence, not proof that every starter has been live-exercised.
 
+A second deployed evidence run on 2026-09-30 used a fresh Harbor Table Restaurant appointment agent with Europe/London, confirmation calls and feedback enabled. Its configured shared Google Calendar returned live availability for 2026-10-01; booking the returned 11:00 slot persisted a confirmed lead, created a Google Calendar event, and returned google_sheets_sync: synced. The booking-confirmation SMS path also produced an SMS log. SMS delivery remains simulated unless Twilio production credentials are configured.
+
 ## Architecture map
 
 `Business Intent → Agent Blueprint → Data/Tools/Rules/Connections → Generic Runtime → AssemblyAI Voice Agent → Business Outcome`
@@ -54,9 +56,9 @@ The public Supabase URL and anon key are intentionally browser-safe identifiers;
 
 - This is a hackathon/single-operator build, not a hardened multi-tenant SaaS.
 - Automated tests mock external providers; they validate contracts, not provider uptime.
-- One recorded Auto Repair voice execution is stronger evidence than the other starter workflows; do not infer six live voice demonstrations.
+- Auto Repair has recorded live voice evidence; the separate Harbor Table run proves a second deployed business workflow at the server/integration layer, not a second recorded voice conversation. Do not infer six live voice demonstrations.
 - Google Calendar booking has documented timezone/concurrency limitations in the current implementation.
-- SMS is simulated; inbound PSTN telephony is not included.
+- SMS has a Twilio-capable outbound provider path but the current deployed evidence run used simulated/log mode because production Twilio credentials are not configured; inbound PSTN telephony is not included.
 - Demo video is intentionally outside this evidence package.
 
 ## Reviewer rule
