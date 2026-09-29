@@ -17,6 +17,9 @@ type UpdateAgentRequestBody = {
   business_hours_end?: unknown;
   business_days?: unknown;
   appointment_duration_minutes?: unknown;
+  timezone?: unknown;
+  confirmation_call_enabled?: unknown;
+  feedback_enabled?: unknown;
 };
 
 const DEFAULT_BUSINESS_DAYS = "mon,tue,wed,thu,fri,sat,sun";
@@ -186,6 +189,9 @@ export async function PUT(
   let businessHoursEnd: string;
   let businessDays: string;
   let appointmentDurationMinutes: number;
+  let timezone: string;
+  let confirmationCallEnabled: boolean;
+  let feedbackEnabled: boolean;
 
   try {
     industry = normalizeOptionalString(body.industry, "industry");
@@ -208,6 +214,12 @@ export async function PUT(
     appointmentDurationMinutes = normalizeAppointmentDuration(
       body.appointment_duration_minutes,
     );
+    const requestedTimezone = body.timezone === undefined ? null : normalizeOptionalString(body.timezone, "timezone");
+    timezone = requestedTimezone ?? "Asia/Karachi";
+    try { new Intl.DateTimeFormat("en-US", { timeZone: timezone }).format(new Date()); }
+    catch { throw new Error("timezone must be a valid IANA timezone."); }
+    confirmationCallEnabled = body.confirmation_call_enabled === undefined ? true : body.confirmation_call_enabled === true;
+    feedbackEnabled = confirmationCallEnabled && (body.feedback_enabled === undefined ? true : body.feedback_enabled === true);
   } catch (error) {
     return Response.json(
       { error: error instanceof Error ? error.message : "Invalid request body." },
@@ -265,9 +277,9 @@ export async function PUT(
       businessHoursStart,
       businessHoursEnd,
       businessDays,
-      timezone: existingAgent.timezone,
-      confirmationCallEnabled: existingAgent.confirmation_call_enabled,
-      feedbackEnabled: existingAgent.feedback_enabled,
+      timezone,
+      confirmationCallEnabled,
+      feedbackEnabled,
       blueprint,
       voiceId,
     });
@@ -296,6 +308,9 @@ export async function PUT(
       business_hours_end: businessHoursEnd,
       business_days: businessDays,
       appointment_duration_minutes: appointmentDurationMinutes,
+      timezone,
+      confirmation_call_enabled: confirmationCallEnabled,
+      feedback_enabled: feedbackEnabled,
       ...(blueprint ? { blueprint } : {}),
     })
     .eq("id", id)

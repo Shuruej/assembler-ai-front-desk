@@ -30,6 +30,13 @@ const DEFAULT_BUSINESS_DAYS = BUSINESS_DAY_OPTIONS.map((day) => day.value);
 const DEFAULT_BUSINESS_HOURS_START = "09:00";
 const DEFAULT_BUSINESS_HOURS_END = "18:00";
 const DEFAULT_APPOINTMENT_DURATION_MINUTES = 60;
+const TIMEZONE_OPTIONS = [
+  ["Asia/Karachi", "Pakistan — Karachi (PKT)"], ["Asia/Dubai", "UAE — Dubai (GST)"],
+  ["Asia/Kolkata", "India — Kolkata (IST)"], ["Europe/London", "United Kingdom — London"],
+  ["Europe/Paris", "Europe — Paris"], ["America/New_York", "US — New York (Eastern)"],
+  ["America/Chicago", "US — Chicago (Central)"], ["America/Denver", "US — Denver (Mountain)"],
+  ["America/Los_Angeles", "US — Los Angeles (Pacific)"], ["Australia/Sydney", "Australia — Sydney"],
+] as const;
 
 type Agent = {
   voice_id?: VoiceId;
@@ -44,6 +51,9 @@ type Agent = {
   business_hours_end: string | null;
   business_days: string | null;
   appointment_duration_minutes: number | null;
+  timezone: string | null;
+  confirmation_call_enabled?: boolean;
+  feedback_enabled?: boolean;
 };
 
 type AgentResponse = Agent & {
@@ -84,6 +94,9 @@ export default function EditAgentPage() {
   const [businessDays, setBusinessDays] = useState<string[]>(
     DEFAULT_BUSINESS_DAYS,
   );
+  const [timezone, setTimezone] = useState("Asia/Karachi");
+  const [confirmationCallEnabled, setConfirmationCallEnabled] = useState(true);
+  const [feedbackEnabled, setFeedbackEnabled] = useState(true);
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -121,6 +134,9 @@ export default function EditAgentPage() {
             DEFAULT_APPOINTMENT_DURATION_MINUTES,
         );
         setBusinessDays(parseBusinessDays(data.business_days));
+        setTimezone(data.timezone ?? "Asia/Karachi");
+        setConfirmationCallEnabled(data.confirmation_call_enabled ?? true);
+        setFeedbackEnabled((data.confirmation_call_enabled ?? true) && (data.feedback_enabled ?? true));
       } catch (err) {
         if (!isActive) return;
         setError(err instanceof Error ? err.message : "Failed to load agent.");
@@ -189,6 +205,9 @@ export default function EditAgentPage() {
           business_hours_end: businessHoursEnd.trim() || DEFAULT_BUSINESS_HOURS_END,
           appointment_duration_minutes: appointmentDurationMinutes,
           business_days: getBusinessDaysValue(),
+          timezone,
+          confirmation_call_enabled: confirmationCallEnabled,
+          feedback_enabled: confirmationCallEnabled && feedbackEnabled,
         }),
       });
       const data = (await response.json()) as AgentResponse;
@@ -209,6 +228,9 @@ export default function EditAgentPage() {
         data.appointment_duration_minutes ?? DEFAULT_APPOINTMENT_DURATION_MINUTES,
       );
       setBusinessDays(parseBusinessDays(data.business_days));
+      setTimezone(data.timezone ?? "Asia/Karachi");
+      setConfirmationCallEnabled(data.confirmation_call_enabled ?? confirmationCallEnabled);
+      setFeedbackEnabled((data.confirmation_call_enabled ?? confirmationCallEnabled) && (data.feedback_enabled ?? feedbackEnabled));
       setSuccessMessage("Agent updated.");
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to update agent.");
@@ -401,6 +423,21 @@ export default function EditAgentPage() {
                   ))}
                 </div>
               </fieldset>
+
+              <div className="mt-4 grid gap-4 sm:grid-cols-2">
+                <div className="flex flex-col gap-2">
+                  <label className="text-sm font-medium" htmlFor="timezone">Timezone</label>
+                  <select id="timezone" className="assembler-input" value={timezone} onChange={(event) => setTimezone(event.target.value)}>
+                    {TIMEZONE_OPTIONS.map(([value, label]) => <option key={value} value={value}>{label}</option>)}
+                  </select>
+                  <p className="text-xs text-[#687080]">Controls local business hours, relative dates, availability and booking times.</p>
+                </div>
+                <div className="rounded-md border border-[#DDE1E8] p-3">
+                  <p className="text-sm font-medium">Follow-up behavior</p>
+                  <label className="mt-3 flex items-center justify-between gap-3 text-sm"><span>Confirmation call</span><input type="checkbox" checked={confirmationCallEnabled} onChange={(event) => { setConfirmationCallEnabled(event.target.checked); if (!event.target.checked) setFeedbackEnabled(false); }} /></label>
+                  <label className="mt-3 flex items-center justify-between gap-3 text-sm"><span>Collect feedback</span><input type="checkbox" disabled={!confirmationCallEnabled} checked={confirmationCallEnabled && feedbackEnabled} onChange={(event) => setFeedbackEnabled(event.target.checked)} /></label>
+                </div>
+              </div>
 
               <div className="mt-4 flex flex-col gap-2">
                 <label className="text-sm font-medium" htmlFor="business-knowledge">

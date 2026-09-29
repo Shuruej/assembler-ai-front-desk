@@ -61,6 +61,18 @@ const DEFAULT_BUSINESS_DAYS = BUSINESS_DAY_OPTIONS.map((day) => day.value);
 const DEFAULT_BUSINESS_HOURS_START = "09:00";
 const DEFAULT_BUSINESS_HOURS_END = "18:00";
 const DEFAULT_APPOINTMENT_DURATION_MINUTES = 60;
+const TIMEZONE_OPTIONS = [
+  ["Asia/Karachi", "Pakistan — Karachi (PKT)"],
+  ["Asia/Dubai", "UAE — Dubai (GST)"],
+  ["Asia/Kolkata", "India — Kolkata (IST)"],
+  ["Europe/London", "United Kingdom — London"],
+  ["Europe/Paris", "Europe — Paris"],
+  ["America/New_York", "US — New York (Eastern)"],
+  ["America/Chicago", "US — Chicago (Central)"],
+  ["America/Denver", "US — Denver (Mountain)"],
+  ["America/Los_Angeles", "US — Los Angeles (Pacific)"],
+  ["Australia/Sydney", "Australia — Sydney"],
+] as const;
 
 const BUILD_STEPS = [
   {
@@ -293,6 +305,20 @@ export default function Home() {
             ))}
           </div>
         </fieldset>
+        <label className="assembler-field" htmlFor={`${idPrefix}-timezone`}>
+          <span>Timezone</span>
+          <select
+            id={`${idPrefix}-timezone`}
+            className="assembler-input bg-white"
+            value={timezone}
+            onChange={(event) => setTimezone(event.target.value)}
+          >
+            {TIMEZONE_OPTIONS.map(([value, label]) => (
+              <option key={value} value={value}>{label}</option>
+            ))}
+          </select>
+          <small className="text-xs text-[#687080]">Used for business hours, relative dates, availability and bookings.</small>
+        </label>
       </div>
     );
   }
@@ -833,16 +859,6 @@ export default function Home() {
                     </div>
                     <div className="mt-6">
                       {renderCoreFields("simple")}
-                      <label className="assembler-field mt-4" htmlFor="timezone">
-                        <span>Timezone</span>
-                        <input
-                          id="timezone"
-                          className="assembler-input"
-                          type="text"
-                          value={timezone}
-                          onChange={(event) => setTimezone(event.target.value)}
-                        />
-                      </label>
                       <label
                         className="assembler-field mt-4"
                         htmlFor="simple-business-knowledge"
