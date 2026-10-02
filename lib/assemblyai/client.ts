@@ -1,4 +1,4 @@
-const ASSEMBLYAI_AGENTS_BASE_URL = "https://agents.assemblyai.com";
+const ASSEMBLYAI_AGENTS_BASE_URL = "https://agents.assemblyai.com/v1";
 const ASSEMBLYAI_RELAY_URL =
   typeof process !== "undefined"
     ? process.env.ASSEMBLYAI_RELAY_URL?.replace(/\/$/, "") || null
