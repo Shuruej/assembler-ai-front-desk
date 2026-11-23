@@ -1,0 +1,56 @@
+name: Verify
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+    branches: [master]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: verify-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  quality:
+    name: Typecheck, test, lint and build
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      # Non-secret placeholders let Next.js compile without production credentials.
+      NEXT_PUBLIC_SUPABASE_URL: https://example.supabase.co
+      NEXT_PUBLIC_SUPABASE_ANON_KEY: ci-placeholder-anon-key
+      SUPABASE_SERVICE_ROLE_KEY: ci-placeholder-service-role-key
+      ASSEMBLYAI_API_KEY: ci-placeholder-assemblyai-key
+      CONNECTION_ENCRYPTION_KEY: 0000000000000000000000000000000000000000000000000000000000000000
+      REVIEWER_SESSION_SECRET: ci-placeholder-reviewer-session-secret
+      GOOGLE_CLIENT_ID: ci-placeholder-google-client-id
+      GOOGLE_CLIENT_SECRET: ci-placeholder-google-client-secret
+      GOOGLE_REDIRECT_URI: https://example.com/api/google/callback
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+
+      - name: Install locked dependencies
+        run: npm ci
+
+      - name: TypeScript check
+        run: npx tsc --noEmit
+
+      - name: Automated tests
+        run: npm test
+
+      - name: ESLint
+        run: npm run lint
+
+      - name: Production build
+        run: npm run build
