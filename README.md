@@ -1,5 +1,14 @@
 # Assembler
 
+
+[![CI](https://github.com/Shuruej/assembler-ai-front-desk/actions/workflows/verify.yml/badge.svg?branch=master)](https://github.com/Shuruej/assembler-ai-front-desk/actions/workflows/verify.yml)
+
+**Project links:** [Live demo](https://assembler-ai-front-desk.vercel.app/) · [Portfolio case study](https://shaheer-builds-portfolio.vercel.app/work/assembler.html) · [Full portfolio](https://shaheer-builds-portfolio.vercel.app/) · [Reviewer evidence](REVIEWER_EVIDENCE.md)
+
+**Stack:** Next.js 16 · React 19 · TypeScript · Supabase · AssemblyAI Voice Agent API · Google Calendar/Sheets integrations.
+
+**Project status:** Independent hackathon MVP / single-operator prototype. This repository documents implementation and test evidence; it is not presented as a hardened multi-tenant SaaS. See [Known Limitations](#known-limitations) before evaluating deployment suitability.
+
 **From business intent to working voice agents.** Building a business voice agent means manually connecting prompts, data, tools, APIs, rules and escalation paths. Assembler turns a workflow described in everyday language into an Agent Blueprint for review before creating an AssemblyAI voice agent. Built on AssemblyAI, Assembler is an independent hackathon project.
 
 The blueprint describes identity, behavior, knowledge needs, data fields, tools, connections, rules, outcomes, and a readable workflow. Users review it before agent creation. The existing manual creation, leads, booking, confirmation, feedback, Calendar, simulated SMS, and dashboard flows remain available.
